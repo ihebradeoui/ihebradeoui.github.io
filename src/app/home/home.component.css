@@ -1,0 +1,116 @@
+.board
+{
+    position: fixed;
+    width: 60%;
+    height: 60%;
+    background-color: #DEC3BE;
+    top: 20%;
+    right: 20%;
+    z-index: 4;
+    border-radius: 3em;
+    display: flexbox;
+    padding: 1em;
+}
+
+@media (max-width: 480px) {
+    .board { display: none; }
+  }
+
+
+.arcade
+{
+
+    color: white;
+    width: 100%;
+    text-align: center;
+    margin: auto;
+    font-size: 40px;
+    line-height: 40px;
+    letter-spacing: 5px;
+    text-shadow: -2px 0 0 #fdff2a,
+      -4px 0 0 #df4a42,
+      2px 0 0 #91fcfe,
+      4px 0 0 #4405fc;
+}
+
+.pushable {
+    background: hsl(340deg 100% 32%);
+    border-radius: 12px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    outline-offset: 4px;
+    flex-direction: column;
+    position: fixed;
+    top: 65%;
+    left: 60%;
+  }
+
+  .front {
+    display: block;
+    padding: 12px 42px;
+    border-radius: 12px;
+    font-size: 1.25rem;
+    background: hsl(345deg 100% 47%);
+    color: white;
+    transform: translateY(-6px);
+  }
+
+  .pushable:focus{
+    outline: none;
+  }
+
+  .pushable:active .front {
+    transform: translateY(-2px);
+  }
+  .normalText
+  {
+    font-family:   system-ui;
+    font-size: 40px;
+
+
+  }
+
+
+  .handle-counter { overflow: hidden; }
+
+.handle-counter .counter-minus,  .handle-counter .counter-plus,  .handle-counter input {
+  float: left;
+  text-align: center;
+}
+
+.handle-counter .counter-minus,  .handle-counter .counter-plus { text-align: center; }
+
+.handle-counter
+{
+    position: fixed;
+    top: 65%;
+    left: 45%;
+}
+
+
+.handle-counter input {
+  width: 100px;
+  height: 55px;
+  border-width: 1px;
+  border-left: none;
+  border-right: none;
+  font-size: 1.25rem;
+}
+
+.btn {
+    width: 55px;
+    height: 55px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+.btn:disabled, .btn:disabled:hover {
+  background-color: darkgrey;
+  cursor: not-allowed;
+}
+
+.btn-primary { background-color: #009dda; }
+
+.btn-primary:hover, .btn-primary:focus { background-color: #0486b9; }

@@ -1,0 +1,41 @@
+<div class="page-header section-dark" style="background-image: url('./assets/img/antoine-barres.jpg')">
+    <div class="filter"></div>
+    <div class="content-center">
+        
+        <div class="container" > 
+        </div>
+      <div class="container">
+      
+        <div class="title-brand">
+          <h1 class="presentation-title">IC TECH LAB</h1>
+          <div class="fog-low">
+            <img src="./assets/img/fog-low.png" alt="">
+          </div>
+          <div class="fog-low right">
+            <img src="./assets/img/fog-low.png" alt="">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="moving-clouds" style="background-image: url('./assets/img/clouds.png'); "></div>
+    
+    <div class="board" >
+        <p class="arcade" >Vous avez: {{DaysOff[0].value}} jours </p>   <br>
+        <p class="normalText" >Nom: {{lastName}}</p>   <br>
+        <p class="normalText" >Prenom: {{firstName}}</p>   <br>
+        <label  class="normalText" >Date debut : </label> <input type="date" [(ngModel)]="startDate"   /> <br>
+        <label class="normalText" >Date fin : </label> <input type="date" [(ngModel)]="endDate"   /> <br>
+        
+            {{endDate}}
+        <div class="handle-counter"  id="handleCounter">
+            <button class="counter-minus btn btn-primary" [disabled]="counter<= 0"  (click)="CountDown()">-</button>
+            <input type="text" [(ngModel)] ="counter">
+            <button class="counter-plus btn btn-primary" [disabled]="counter>=DaysOff[0].value" (click)="CountUp()">+</button>
+          </div>        
+        <button type="button" (click)="btnClicked()" class="pushable" >
+            <span class="front">
+            demande conjet
+            </span>
+          </button>
+    </div>
+</div>
