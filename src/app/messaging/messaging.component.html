@@ -1,0 +1,8 @@
+
+  <div id="div" >
+  <div *ngFor="let item of data">
+    <p>{{item}}</p></div>
+    <br>
+   
+<input [(ngModel)]="message" type="text" (keydown.enter)="send()"><button (click)="send()">send</button>
+</div>

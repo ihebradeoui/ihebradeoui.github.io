@@ -1,0 +1,93 @@
+<div class="container">
+
+    <div class="card o-hidden border-0 shadow-lg my-5">
+        <div class="card-body p-0">
+            <!-- Nested Row within Card Body -->
+            <div class="row">
+                <div class="col-lg-5 d-none d-lg-block bg-register-image" id="imageHolder">
+                </div>
+                <div class="col-lg-7">
+                    <div class="p-5">
+                        <div class="text-center">
+                            <h1 class="h4 text-gray-900 mb-4">Create an Account!</h1>
+                        </div>
+                        <form [formGroup]="registerForm" (ngSubmit)="register()" class="user">
+                            <div class="form-group row">
+                                <div class="col-sm-6 mb-3 mb-sm-0">
+                                    <input formControlName="firstName"  type="text" class="form-control form-control-user" id="exampleFirstName"
+                                        placeholder="First Name">
+                                        <div *ngIf="firstName.touched && firstName.invalid">
+                                            <small class="text-danger" *ngIf="firstName.errors['required']">First name is required</small>
+                                            <small class="text-danger" *ngIf="firstName.errors['minlength']">First name is too short</small>
+                                            <small class="text-danger" *ngIf="firstName.errors['maxlength']">First name is too long</small>
+                                            <small class="text-danger" *ngIf="firstName.errors['pattern']">First name is should only contain alphabets</small>
+                                        </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <input formControlName="lastName" type="text" class="form-control form-control-user" id="exampleLastName"
+                                        placeholder="Last Name">
+                                        <div *ngIf="lastName.touched && lastName.invalid">
+                                            <small class="text-danger" *ngIf="lastName.errors['required']">Last name is required</small>
+                                            <small class="text-danger" *ngIf="lastName.errors['minlength']">Last name is too short</small>
+                                            <small class="text-danger" *ngIf="lastName.errors['maxlength']">Last name is too long</small>
+                                            <small class="text-danger" *ngIf="lastName.errors['pattern']">Last name is should only contain alphabets</small>
+
+                                        </div>
+
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <input formControlName="email" type="email" class="form-control form-control-user" id="exampleInputEmail"
+                                    placeholder="Email Address">
+                                    <div *ngIf="email.touched && email.invalid">
+                                        <small class="text-danger" *ngIf="email.errors['required']">Email is required</small>
+                                        <small class="text-danger" *ngIf="email.errors['email']">Email is too short</small>
+                                    </div>
+                            </div>
+                            <div class="form-group">
+                                <input formControlName="phone" type="text" class="form-control form-control-user" id="exampleInputEmail"
+                                    placeholder="Phone Number">
+                                    <div *ngIf="phone.touched && phone.invalid">
+                                        <small class="text-danger" *ngIf="phone.errors['required']">Phone number is required</small>
+                                        <small class="text-danger" *ngIf="phone.errors['pattern']">Phone number should be all numbers</small>
+                                        <small class="text-danger" *ngIf="phone.errors['minlength']">Phone number is too short</small>
+                                        <small class="text-danger" *ngIf="phone.errors['maxlength']">Phone number is too long</small>
+
+
+                                    </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-sm-6 mb-3 mb-sm-0">
+                                    <input formControlName="password" type="password" class="form-control form-control-user"
+                                        id="exampleInputPassword" placeholder="Password">
+                                        <div *ngIf="password.touched && password.invalid">
+                                            <small class="text-danger" *ngIf="password.errors['required']">Password is required</small>
+                                            <small class="text-danger" *ngIf="password.errors['minlength']">Password is too short</small>
+                                            <small class="text-danger" *ngIf="password.errors['maxlength']">Password is too long</small>
+                                        </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <input formControlName="confirmPassword" type="password" class="form-control form-control-user"
+                                        id="exampleRepeatPassword" placeholder="Repeat Password">
+                                        <div *ngIf="confirmPassword.touched && confirmPassword.invalid">
+                                            <small class="text-danger" *ngIf="confirmPassword.errors['required']">Password is required</small>
+                                            <small class="text-danger" *ngIf="confirmPassword.errors['minlength']">Password is too short</small>
+                                            <small class="text-danger" *ngIf="confirmPassword.errors['maxlength']">Password is too long</small>
+                                        </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-user btn-block">
+                                Register Account
+                            </button>
+                            
+                        </form>
+                        <hr>
+                        
+                       
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>

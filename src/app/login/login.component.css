@@ -1,0 +1,8 @@
+.input-group-text
+ {
+  height: 38px;
+ }
+ .input-group {
+    flex-direction: row;
+ }
+ 
