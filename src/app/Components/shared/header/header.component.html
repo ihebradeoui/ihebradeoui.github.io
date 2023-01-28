@@ -1,0 +1,24 @@
+<mat-toolbar color="primary">
+    <h2 class="logo">InSite</h2>
+
+    <button mat-button [routerLink]="['/']">Home</button>
+    <button mat-button [routerLink]="['/employees']" >Employees</button>
+    <button mat-button [routerLink]="['/departements']" >Departements</button>
+    <button mat-button [routerLink]="['/requests']" >Requests</button>
+
+    <button name="Person" mat-button [matMenuTriggerFor]="menu">
+        <mat-icon> person </mat-icon>
+    </button>
+
+        <mat-menu #menu="matMenu">
+            <button mat-menu-item  [routerLink]="['/information']" >
+                <mat-icon> info  </mat-icon>
+                Information
+            </button>
+        
+            <button mat-menu-item [routerLink]="['/login']" >
+                <mat-icon > exit_to_app </mat-icon>
+                Sign Out
+            </button>
+        </mat-menu>
+  </mat-toolbar> 

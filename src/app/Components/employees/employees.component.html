@@ -1,0 +1,48 @@
+<button mat-raised-button color="primary" (click)="open_dialog_for_new_employee()">New Employee</button>
+<div class="mat-elevation-z8">
+    <table mat-table [dataSource]="dataSource">
+      <!-- Id Column -->
+      <ng-container matColumnDef="id">
+        <th mat-header-cell *matHeaderCellDef> No. </th>
+        <td mat-cell *matCellDef="let element"> {{element.id}} </td>
+      </ng-container>
+  
+      <!-- Full Name Column -->
+      <ng-container matColumnDef="fullname">
+        <th mat-header-cell *matHeaderCellDef> Full Name </th>
+        <td mat-cell *matCellDef="let element"> {{element.fullname}} </td>
+      </ng-container>
+  
+      <!-- Function Column -->
+      <ng-container matColumnDef="function">
+        <th mat-header-cell *matHeaderCellDef> Function</th>
+        <td mat-cell *matCellDef="let element"> {{element.function}} </td>
+      </ng-container>
+  
+      <!-- E-mail Column -->
+      <ng-container matColumnDef="email">
+        <th mat-header-cell *matHeaderCellDef> e-mail </th>
+        <td mat-cell *matCellDef="let element"> {{element.email}} </td>
+      </ng-container>
+
+      <!-- Phone Column -->
+      <ng-container matColumnDef="phone">
+        <th mat-header-cell *matHeaderCellDef> Phone </th>
+        <td mat-cell *matCellDef="let element"> {{element.phone}} </td>
+      </ng-container>
+
+      <!-- Departement Column -->
+      <ng-container matColumnDef="departement">
+        <th mat-header-cell *matHeaderCellDef> Departement </th>
+        <td mat-cell *matCellDef="let element"> {{element.departement.name}} </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+  
+    <mat-paginator [pageSizeOptions]="[10,15,20,25]"
+                   showFirstLastButtons>
+    </mat-paginator>
+  </div>
+  
