@@ -1,0 +1,26 @@
+<h2>Demande a new Leave </h2>
+<mat-form-field>
+  <mat-label>Select Start Date</mat-label>
+    <input matInput [matDatepicker]="start_date" [(ngModel)]="selected_start_date">
+    <mat-datepicker-toggle matSuffix [for]="start_date"></mat-datepicker-toggle>
+    <mat-datepicker #start_date></mat-datepicker>
+</mat-form-field>
+<br>
+<mat-form-field>
+  <mat-label>Select End Date</mat-label>
+    <input matInput [matDatepicker]="end_date" [(ngModel)]="selected_end_date">
+    <mat-datepicker-toggle matSuffix [for]="end_date"></mat-datepicker-toggle>
+    <mat-datepicker #end_date></mat-datepicker>
+</mat-form-field>
+<br>
+<mat-form-field >
+  <mat-label>Select a Leave Type</mat-label>
+    <mat-select [(ngModel)]="selected_leave_type">
+      <mat-option *ngFor="let leave of Leave_Type" [value]="leave.value">
+        {{leave.viewValue}}
+      </mat-option>
+    </mat-select>
+  </mat-form-field>
+<br>
+<button mat-raised-button color="warn"> Cancel</button>
+<button mat-raised-button color="primary" (click)="Submit()">Save</button>

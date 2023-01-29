@@ -12,8 +12,7 @@ export class RequestsComponent implements OnInit {
 
   constructor() { }
 
-  ngOnInit(): void {
-  }
+  ngOnInit(): void {}
   
   displayedColumns: string[] = ['id', 'employee_name', 'start_date', 'end_date','treated_by','leave_type','request_status'];
   dataSource = new MatTableDataSource<Requests>(ELEMENT_DATA);

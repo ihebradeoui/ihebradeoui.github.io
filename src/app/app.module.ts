@@ -13,6 +13,8 @@ import { MatPaginatorModule } from '@angular/material/paginator';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatDialogModule } from '@angular/material/dialog';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatSelectModule } from '@angular/material/select';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 
 import { HeaderComponent } from './Components/shared/header/header.component';
@@ -27,6 +29,9 @@ import { NewEmployeeComponent } from './Components/popups/new-employee/new-emplo
 import { LogOutComponent } from './Components/popups/log-out/log-out.component';
 import { ConfirmationComponent } from './Components/popups/confirmation/confirmation.component';
 import { EmployeeDetailsComponent } from './Components/popups/employee-details/employee-details.component'; 
+import { MatNativeDateModule } from '@angular/material/core';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NewRequestComponent } from './Components/popups/new-request/new-request.component';
 
 
 @NgModule({
@@ -39,7 +44,12 @@ import { EmployeeDetailsComponent } from './Components/popups/employee-details/e
     DashboardComponent,
     InformationComponent,
     LoginComponent, 
-    DepartementsComponent, NewEmployeeComponent, LogOutComponent, ConfirmationComponent, EmployeeDetailsComponent
+    DepartementsComponent,
+    NewEmployeeComponent,
+    LogOutComponent,
+    ConfirmationComponent,
+    EmployeeDetailsComponent,
+    NewRequestComponent
   ],
   imports: [
     BrowserModule,
@@ -53,9 +63,14 @@ import { EmployeeDetailsComponent } from './Components/popups/employee-details/e
     MatFormFieldModule,
     MatInputModule,
     MatDialogModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    FormsModule,
+    ReactiveFormsModule,
+    MatSelectModule,
     BrowserAnimationsModule
   ],
-  providers: [],
+  providers: [MatDatepickerModule],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
