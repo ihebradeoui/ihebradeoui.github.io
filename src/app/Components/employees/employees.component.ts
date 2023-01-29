@@ -2,7 +2,8 @@ import { Component, OnInit, ViewChild } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatTableDataSource } from '@angular/material/table';
-import { IEmployees } from 'src/app/Models/Employes';
+import { User } from 'src/app/Models/User';
+import { UserService } from 'src/app/Services/user.service';
 import { NewEmployeeComponent } from '../popups/new-employee/new-employee.component';
 
 @Component({
@@ -13,25 +14,32 @@ import { NewEmployeeComponent } from '../popups/new-employee/new-employee.compon
 
 export class EmployeesComponent implements OnInit {
 
-  displayedColumns: string[] = ['id', 'fullname', 'function', 'email','phone','departement'];
-  dataSource = new MatTableDataSource<IEmployees>(ELEMENT_DATA);
+  users = []
+  displayedColumns: string[] = ['id', 'firstname', 'lastname', 'email','phone'];
+  dataSource = new MatTableDataSource<User>(this.users);
   @ViewChild(MatPaginator) paginator: MatPaginator | any;
-  constructor(public dialog: MatDialog) {}
+  constructor(public dialog: MatDialog ,private  usersService : UserService) {}
 
-  ngOnInit(): void {}
-  ngAfterViewInit() {
+  ngOnInit(): void {
     this.dataSource.paginator = this.paginator;
+    this.usersService.getUsers().subscribe((data)=>this.listUsers(data))
+    
+  }
+  ngAfterViewInit() {
   }
 
   open_dialog_for_new_employee() {
     this.dialog.open(NewEmployeeComponent);
   }
-}
 
-const ELEMENT_DATA: IEmployees[] = [
-  {id: '1', fullname:"Hadj Hassine Jawher", function: 'Developer', email:"j.hadjhassine@certeurope.fr",phone:'29 698 907', departement:{id:'1',name:'R&D'}},
-  {id: '2', fullname:"Hadj Hassine Jawher", function: 'Developer', email:"j.hadjhassine@certeurope.fr",phone:'29 698 907', departement:{id:'1',name:'R&D'}},
-  {id: '3', fullname:"Hadj Hassine Jawher", function: 'Developer', email:"j.hadjhassine@certeurope.fr",phone:'29 698 907', departement:{id:'1',name:'R&D'}},
-  {id: '4', fullname:"Hadj Hassine Jawher", function: 'Developer', email:"j.hadjhassine@certeurope.fr",phone:'29 698 907', departement:{id:'1',name:'R&D'}},
-  {id: '5', fullname:"Hadj Hassine Jawher", function: 'Developer', email:"j.hadjhassine@certeurope.fr",phone:'29 698 907', departement:{id:'1',name:'R&D'}},  
-];
+  listUsers(entries: any[]){
+    this.users = [];
+    entries.forEach(element => {
+     let y = element.payload.toJSON()
+     y["$key"] = element.key
+     this.users.push(y as User)
+      })
+      this.dataSource=new MatTableDataSource<User>(this.users);
+      console.log(this.users)
+    }
+}

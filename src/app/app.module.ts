@@ -26,7 +26,13 @@ import { DepartementsComponent } from './Components/departements/departements.co
 import { NewEmployeeComponent } from './Components/popups/new-employee/new-employee.component';
 import { LogOutComponent } from './Components/popups/log-out/log-out.component';
 import { ConfirmationComponent } from './Components/popups/confirmation/confirmation.component';
-import { EmployeeDetailsComponent } from './Components/popups/employee-details/employee-details.component'; 
+import { EmployeeDetailsComponent } from './Components/popups/employee-details/employee-details.component';
+import { initializeApp,provideFirebaseApp } from '@angular/fire/app';
+import { environment } from '../environments/environment';
+import { provideAuth,getAuth } from '@angular/fire/auth';
+import { provideDatabase,getDatabase } from '@angular/fire/database'; 
+import { AngularFireModule } from '@angular/fire/compat';
+import { AngularFireDatabaseModule } from '@angular/fire/compat/database';
 
 
 @NgModule({
@@ -53,7 +59,13 @@ import { EmployeeDetailsComponent } from './Components/popups/employee-details/e
     MatFormFieldModule,
     MatInputModule,
     MatDialogModule,
-    BrowserAnimationsModule
+    BrowserAnimationsModule,
+    AngularFireModule.initializeApp(environment.firebase),
+    AngularFireDatabaseModule,
+    provideFirebaseApp(() => initializeApp(environment.firebase)),
+    provideAuth(() => getAuth()),
+    provideDatabase(() => getDatabase()),
+
   ],
   providers: [],
   bootstrap: [AppComponent]
