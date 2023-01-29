@@ -1,7 +1,11 @@
 import { Component, OnInit, ViewChild } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatTableDataSource } from '@angular/material/table';
-import { Requests } from 'src/app/Models/Requests';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Request } from 'src/app/Models/Request';
+import { RequestsService } from 'src/app/Services/Requests/requests.service';
+import { NewRequestComponent } from '../popups/new-request/new-request.component';
 
 @Component({
   selector: 'app-requests',
@@ -9,28 +13,35 @@ import { Requests } from 'src/app/Models/Requests';
   styleUrls: ['./requests.component.scss']
 })
 export class RequestsComponent implements OnInit {
+  requests:Request[]=[]
+  constructor(private router: Router,public dialog: MatDialog ,private requestsService: RequestsService) { }
 
-  constructor() { }
-
-  ngOnInit(): void {}
-  
-  displayedColumns: string[] = ['id', 'employee_name', 'start_date', 'end_date','treated_by','leave_type','request_status'];
-  dataSource = new MatTableDataSource<Requests>(ELEMENT_DATA);
+  displayedColumns: string[] = ['id', 'employee', 'start_date', 'end_date','type','comment','status'];
+  dataSource = new MatTableDataSource<Request>(this.requests);
   @ViewChild(MatPaginator) paginator: MatPaginator | any;
+  
+  ngOnInit(): void {
+    this.requestsService.getRequests().subscribe((data)=>this.listRequests(data))
+    //    if not admin :
+    //    this.requestsService.getRequestByUser(this.auth.CurrentUserUid()).subscribe((data)=>this.listRequests(data))
 
+  }
   ngAfterViewInit() {
     this.dataSource.paginator = this.paginator;
   }
 
-}
+  listRequests(entries: any[]){
+    this.requests = [];
+    entries.forEach(element => {
+     let y = element.payload.toJSON()
+     y["$key"] = element.key
+     this.requests.push(y as Request)
+      })
+      this.dataSource=new MatTableDataSource<Request>(this.requests);
+      console.log(this.requests)
+    }
 
-const ELEMENT_DATA: Requests[] = [
-{id: '1', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'},
-{id: '2', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'},
-{id: '3', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'},
-{id: '4', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'},
-{id: '5', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'},
-{id: '6', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'},
-{id: '7', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'},
-{id: '8', employee_name:"Hadj Hassine Jawher", start_date: '01-01-2023',end_date:"03-01-2023",treated_by:'Med Aziz Hannafi',leave_type:'Illness',request_status:'In progress'}
-];
+addRequest()
+{this.router.navigate(["/newRequest"])}
+
+}

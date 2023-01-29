@@ -5,6 +5,7 @@ import { DepartementsComponent } from './Components/departements/departements.co
 import { EmployeesComponent } from './Components/employees/employees.component';
 import { InformationComponent } from './Components/information/information.component';
 import { LoginComponent } from './Components/login/login.component';
+import { NewRequestComponent } from './Components/popups/new-request/new-request.component';
 import { RequestsComponent } from './Components/requests/requests.component';
 
 const routes: Routes = [
@@ -13,7 +14,8 @@ const routes: Routes = [
   { path: 'requests', component: RequestsComponent },
   { path: 'information', component: InformationComponent },
   { path: 'departements', component: DepartementsComponent },
-  { path: 'login', component: LoginComponent }  
+  { path: 'login', component: LoginComponent }  ,
+  {path:'newRequest', component:NewRequestComponent}
 ];
 
 @NgModule({

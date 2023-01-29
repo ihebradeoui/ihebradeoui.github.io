@@ -1,4 +1,7 @@
 import { Component, OnInit } from '@angular/core';
+import { Request } from 'src/app/Models/Request';
+import { AuthService } from 'src/app/Services/Authentication/auth.service';
+import { RequestsService } from 'src/app/Services/Requests/requests.service';
 
 @Component({
   selector: 'app-new-request',
@@ -7,7 +10,7 @@ import { Component, OnInit } from '@angular/core';
 })
 export class NewRequestComponent implements OnInit {
 
-  constructor() { }
+  constructor(private requestsService : RequestsService,private auth : AuthService) { }
 
   ngOnInit(): void {
   }
@@ -41,6 +44,7 @@ export class NewRequestComponent implements OnInit {
       leave_type: this.selected_leave_type,
       status:"In Progress"
     }
+    this.requestsService.createRequest(new Request(this.auth.CurrentUserUid(),this.selected_start_date.toDateString(),this.selected_end_date.toDateString(),'Sick Leave',"tired"))
    console.log(formData)
   }
 }

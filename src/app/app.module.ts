@@ -60,6 +60,7 @@ import { NewRequestComponent } from './Components/popups/new-request/new-request
   imports: [
     ReactiveFormsModule,
     FormsModule,
+    MatDatepickerModule,
     MatSelectModule,
     MatNativeDateModule,
     BrowserModule,
