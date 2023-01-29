@@ -1,1 +1,18 @@
-<p>login works!</p>
+<h2>Welcome Back</h2>
+<form [formGroup]="form">
+    <mat-form-field>
+      <input matInput placeholder="Email" formControlName="email">
+      <mat-error *ngIf="form.get('email').hasError('required')">
+        Email is required
+      </mat-error>
+    </mat-form-field>
+<br>
+    <mat-form-field>
+        <input matInput placeholder="Password" formControlName="password">
+        <mat-error *ngIf="form.get('password').hasError('required')">
+          Password is required
+        </mat-error>
+      </mat-form-field>
+      <br>
+  <button mat-raised-button color="primary" (click)="Submit()">Log In</button>
+</form>

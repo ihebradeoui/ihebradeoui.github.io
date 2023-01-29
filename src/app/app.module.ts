@@ -13,6 +13,8 @@ import { MatPaginatorModule } from '@angular/material/paginator';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatDialogModule } from '@angular/material/dialog';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatSelectModule } from '@angular/material/select';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 
 import { HeaderComponent } from './Components/shared/header/header.component';
@@ -33,6 +35,9 @@ import { provideAuth,getAuth } from '@angular/fire/auth';
 import { provideDatabase,getDatabase } from '@angular/fire/database'; 
 import { AngularFireModule } from '@angular/fire/compat';
 import { AngularFireDatabaseModule } from '@angular/fire/compat/database';
+import { MatNativeDateModule } from '@angular/material/core';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NewRequestComponent } from './Components/popups/new-request/new-request.component';
 
 
 @NgModule({
@@ -45,9 +50,18 @@ import { AngularFireDatabaseModule } from '@angular/fire/compat/database';
     DashboardComponent,
     InformationComponent,
     LoginComponent, 
-    DepartementsComponent, NewEmployeeComponent, LogOutComponent, ConfirmationComponent, EmployeeDetailsComponent
+    DepartementsComponent,
+    NewEmployeeComponent,
+    LogOutComponent,
+    ConfirmationComponent,
+    EmployeeDetailsComponent,
+    NewRequestComponent
   ],
   imports: [
+    ReactiveFormsModule,
+    FormsModule,
+    MatSelectModule,
+    MatNativeDateModule,
     BrowserModule,
     AppRoutingModule,
     MatToolbarModule,
@@ -64,10 +78,10 @@ import { AngularFireDatabaseModule } from '@angular/fire/compat/database';
     AngularFireDatabaseModule,
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     provideAuth(() => getAuth()),
-    provideDatabase(() => getDatabase()),
+    provideDatabase(() => getDatabase())
 
   ],
-  providers: [],
+  providers: [MatDatepickerModule],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
