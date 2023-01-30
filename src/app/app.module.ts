@@ -22,9 +22,7 @@ import { FooterComponent } from './Components/shared/footer/footer.component';
 import { EmployeesComponent } from './Components/employees/employees.component';
 import { RequestsComponent } from './Components/requests/requests.component';
 import { DashboardComponent } from './Components/dashboard/dashboard.component';
-import { InformationComponent } from './Components/information/information.component';
 import { LoginComponent } from './Components/login/login.component';
-import { DepartementsComponent } from './Components/departements/departements.component';
 import { NewEmployeeComponent } from './Components/popups/new-employee/new-employee.component';
 import { LogOutComponent } from './Components/popups/log-out/log-out.component';
 import { ConfirmationComponent } from './Components/popups/confirmation/confirmation.component';
@@ -48,9 +46,7 @@ import { NewRequestComponent } from './Components/popups/new-request/new-request
     EmployeesComponent,
     RequestsComponent,
     DashboardComponent,
-    InformationComponent,
     LoginComponent, 
-    DepartementsComponent,
     NewEmployeeComponent,
     LogOutComponent,
     ConfirmationComponent,
