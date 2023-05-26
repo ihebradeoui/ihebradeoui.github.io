@@ -1,11 +1,10 @@
-/* To learn more about this file see: https://angular.io/config/tsconfig. */
 {
   "compileOnSave": false,
   "compilerOptions": {
     "baseUrl": "./",
     "outDir": "./dist/out-tsc",
     "forceConsistentCasingInFileNames": true,
-    "strict": true,
+    "strict": false,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
@@ -21,7 +20,11 @@
     "lib": [
       "es2020",
       "dom"
-    ]
+    ],
+    "types": [
+      "babylonjs",
+      "babylonjs-gui"
+      ],
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
@@ -29,4 +32,5 @@
     "strictInputAccessModifiers": true,
     "strictTemplates": true
   }
+ 
 }

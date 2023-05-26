@@ -1,4 +1,10 @@
 # SkyDiver
+npm install -g ngh
+
+ng build --configuration production --base-href https://ihebradeoui.github.io/
+
+ngh --dir=dist/sky-diver --branch main
+
 
 This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 13.3.10.
 

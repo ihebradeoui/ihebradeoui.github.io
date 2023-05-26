@@ -7,6 +7,7 @@ import { environment } from './environments/environment';
 if (environment.production) {
   enableProdMode();
 }
+window.CANNON = require('cannon')
 
 platformBrowserDynamic().bootstrapModule(AppModule)
   .catch(err => console.error(err));
