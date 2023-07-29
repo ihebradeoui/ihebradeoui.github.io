@@ -12,17 +12,20 @@ import { BasicScene } from '../objects/utilities/basic-scene';
 })
 export class NotFoundComponent implements OnInit {
 
-  constructor(private http : HttpClient, private movementService : MovementService, private router : Router,private rout : ActivatedRoute){}
-  ngOnInit(): void 
-  {
-    var user="iheb"
-    const canvas= document.querySelector("canvas")!
-    const lobby = this.router.url.substring(1,this.router.url.indexOf('?'))
+  constructor(private http: HttpClient, private movementService: MovementService, private router: Router, private rout: ActivatedRoute) { }
+  ngOnInit(): void {
+    var user = "default"
+    this.rout.queryParams
+      .subscribe(params => {
+        user = params["user"];
+      })
+    const canvas = document.querySelector("canvas")!
+    const lobby = this.router.url.substring(1, this.router.url.indexOf('?'))
     console.log(lobby)
-    this.start(user,lobby,canvas)
+    this.start(user, lobby, canvas)
   }
-  start(user: any,lobby : string,canvas : any): void {
-    const scene = new pbrThing(this.http,canvas,this.movementService,lobby,user);
+  start(user: any, lobby: string, canvas: any): void {
+    const scene = new pbrThing(this.http, canvas, this.movementService, lobby, user);
     //const scene = new BasicScene(canvas)
   }
 
