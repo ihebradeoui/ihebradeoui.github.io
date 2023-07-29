@@ -18,13 +18,13 @@
     "target": "es2017",
     "module": "es2020",
     "lib": [
-      "es2020",
+      "esnext",
       "dom"
     ],
     "types": [
       "babylonjs",
       "babylonjs-gui"
-      ],
+    ],
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
@@ -32,5 +32,4 @@
     "strictInputAccessModifiers": true,
     "strictTemplates": true
   }
- 
 }
