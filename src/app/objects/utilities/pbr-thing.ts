@@ -6,6 +6,7 @@ import { MovementService } from "src/app/Services/movement.service";
 import { Movement } from "./movement";
 import { UserName } from "./writer";
 import MeshWriter from 'meshwriter'
+import { Animal } from "../animals/animal";
 
 
 export class pbrThing {
@@ -60,16 +61,15 @@ export class pbrThing {
         )
 
 
-        //ball
+
         const ball = MeshBuilder.CreateSphere("ball", { diameter: 1, updatable: true }, this.scene)
         ball.position = new Vector3(0, 10, 0);
-
-
-
         ball.material = this.CreateGroundMaterial(1);
         ball.rotation = new Vector3(0, 0, 0)
 
-
+        //rabbit
+        const rabbit = new Animal();
+        rabbit.draw(scene);
 
         //skybox
         const envTex = CubeTexture.CreateFromPrefilteredData("/assets/pbr/environment.env", scene)
