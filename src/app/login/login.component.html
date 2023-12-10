@@ -1,63 +1,17 @@
-<div class="section section-image section-login" style="background-image: url('./assets/img/login-image.jpg');">
-    <form class="user" [formGroup]="loginForm" (ngSubmit)="login()">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-4 col-md-6 mx-auto">
-                    <div class="card card-register">
-                        <h3 class="title mx-auto">Welcome</h3>
-                        
-                        <form [formGroup]="loginForm" class="register-form">
-                            <label>Email</label>
-                            <div class="input-group form-group-no-border">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text">
-                                        <i class="nc-icon nc-email-85"></i>
-                                    </span>
-                                </div>
-                                <div class="form-group">
-                                    <input type="email" formControlName="email" class="form-control"
-                                        id="exampleInputEmail" placeholder="Enter Email Address...">
-                                    <div *ngIf="email.touched && email.invalid">
-                                        <small class="text-danger" *ngIf="email.errors['required']">Email is
-                                            required</small>
-                                        <small class="text-danger" *ngIf="email.errors['email']">Email is
-                                            invalid</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <label>Password</label>
-                            <div class="input-group form-group-no-border">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text">
-                                        <i class="nc-icon nc-key-25"></i>
-                                    </span>
-                                </div>
-                                <div class="form-group">
-                                    <input class="form-control" type="password" formControlName="password"
-                                        class="form-control form-control-user" id="exampleInputPassword"
-                                        placeholder="Password">
-                                    <div *ngIf="password.touched && password.invalid">
-                                        <small class="text-danger" *ngIf="password.errors?.['required']">password is
-                                            required</small>
-                                        <small class="text-danger" *ngIf="password.errors?.['minlength']">password must
-                                            be 6 characters at least</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <button (click)="login()" class="btn btn-danger btn-block btn-round">Login</button>
-
-                            <button routerLink="/register" class="btn btn-danger btn-block btn-round">Register</button>
-                        </form>
-                        <div class="forgot">
-                            <a routerLink="/forgotpass" class="btn btn-link btn-danger">Forgot password?</a>
-                        </div>
-                    </div>
-                    <div class="col text-center">
-                        <a  class="btn btn-outline-neutral btn-round btn-lg" target="_blank">View
-                            Register Page</a>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="login-page">
+  <div class="login-form">
+    <h2>Login</h2>
+    <form>
+      <div class="p-field">
+        <input type="text" placeholder="Username" id="username" pInputText />
+      </div>
+      <div class="p-field">
+        <input type="password" id="password" pPassword />
+      </div>
+      <div class="butts">
+        <button type="submit" (click)="login()" pButton>Login</button>
+        <button type="submit" routerLink="/register" pButton>Register</button>
+      </div>
     </form>
+  </div>
 </div>
