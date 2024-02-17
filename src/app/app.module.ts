@@ -18,6 +18,8 @@ import { ButtonModule } from "primeng/button";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { InputTextModule } from "primeng/inputtext";
 import { PasswordModule } from "primeng/password";
+import { DragDropModule } from "@angular/cdk/drag-drop";
+import { DesktopComponent } from './desktop/desktop.component';
 
 @NgModule({
   declarations: [
@@ -25,6 +27,7 @@ import { PasswordModule } from "primeng/password";
     RegisterComponent,
     MessagingComponent,
     LoginComponent,
+    DesktopComponent,
   ],
   imports: [
     BrowserModule,
@@ -37,6 +40,7 @@ import { PasswordModule } from "primeng/password";
     BrowserAnimationsModule,
     InputTextModule,
     PasswordModule,
+    DragDropModule,
 
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     provideAuth(() => getAuth()),

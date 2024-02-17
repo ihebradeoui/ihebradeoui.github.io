@@ -1,8 +1,17 @@
-
-  <div id="div" >
+<div
+  *ngFor="let tab of tabs"
+  class="messageBox"
+  id="div"
+  cdkDrag
+  [draggable]="true"
+>
+  {{ tab }}
+  <button class="newTab" (click)="addTab()"></button>
   <div *ngFor="let item of data">
-    <p>{{item}}</p></div>
-    <br>
-   
-<input [(ngModel)]="message" type="text" (keydown.enter)="send()"><button (click)="send()">send</button>
+    <p>{{ item }}</p>
+  </div>
+  <br />
+
+  <input [(ngModel)]="message" type="text" (keydown.enter)="send()" />
+  <button (click)="send()">send</button>
 </div>

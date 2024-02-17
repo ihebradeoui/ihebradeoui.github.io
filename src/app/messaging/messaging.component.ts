@@ -14,6 +14,7 @@ export class MessagingComponent implements OnInit, AfterViewChecked {
   messageForm: FormGroup;
   message = "";
   data: any;
+  tabs: Array<number> = [1];
   constructor(
     private router: Router,
     private db: AngularFireDatabase,
@@ -26,6 +27,10 @@ export class MessagingComponent implements OnInit, AfterViewChecked {
       this.data = data;
     });
     this.ScrollDownMessageBox();
+  }
+  addTab() {
+    this.tabs.push(this.tabs[this.tabs.length - 1] + 1);
+    console.log(this.tabs);
   }
   ngAfterViewChecked(): void {
     this.ScrollDownMessageBox();

@@ -1,12 +1,23 @@
 <div class="login-page">
   <div class="login-form">
     <h2>Login</h2>
-    <form>
+    <form [formGroup]="loginForm">
       <div class="p-field">
-        <input type="text" placeholder="Username" id="username" pInputText />
+        <input
+          type="text"
+          formControlName="email"
+          placeholder="Email"
+          id="email"
+          pInputText
+        />
       </div>
       <div class="p-field">
-        <input type="password" id="password" pPassword />
+        <input
+          type="password"
+          id="password"
+          formControlName="password"
+          pPassword
+        />
       </div>
       <div class="butts">
         <button type="submit" (click)="login()" pButton>Login</button>

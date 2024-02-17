@@ -9,7 +9,6 @@ import {
 } from "@angular/forms";
 
 import { AuthService } from "../auth.service";
-import { DaysOffService } from "../Services/days-off.service";
 @Component({
   selector: "app-login",
   templateUrl: "./login.component.html",
@@ -22,8 +21,7 @@ export class LoginComponent implements OnInit {
   constructor(
     private fb: FormBuilder,
     private authservice: AuthService,
-    private router: Router,
-    private daysOffService: DaysOffService
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -54,7 +52,7 @@ export class LoginComponent implements OnInit {
     console.log(email + password);
     this.authservice.SignInUser(email, password).then(
       () => {
-        this.router.navigate(["/messaging"]);
+        this.router.navigate(["/desktop"]);
       },
       (error) => {
         this.errorMessage = error;
