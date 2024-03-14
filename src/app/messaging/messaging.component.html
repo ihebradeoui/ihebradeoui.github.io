@@ -1,13 +1,5 @@
-<div
-  *ngFor="let tab of tabs"
-  class="messageBox"
-  id="div"
-  cdkDrag
-  [draggable]="true"
->
-  {{ tab }}
-  <button class="newTab" (click)="addTab()"></button>
-  <div *ngFor="let item of data">
+<div class="messageBox" #chatBox cdkDrag [draggable]="true">
+  <div class="chatBoxNgFor" *ngFor="let item of data">
     <p>{{ item }}</p>
   </div>
   <br />

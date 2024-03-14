@@ -1,4 +1,10 @@
-import { AfterViewChecked, Component, OnInit } from "@angular/core";
+import {
+  AfterViewChecked,
+  Component,
+  ElementRef,
+  OnInit,
+  ViewChild,
+} from "@angular/core";
 import { AngularFireDatabase } from "@angular/fire/compat/database";
 import { FormGroup } from "@angular/forms";
 import { Router } from "@angular/router";
@@ -15,6 +21,7 @@ export class MessagingComponent implements OnInit, AfterViewChecked {
   message = "";
   data: any;
   tabs: Array<number> = [1];
+  @ViewChild("chatBox", { static: false }) chatBox: ElementRef;
   constructor(
     private router: Router,
     private db: AngularFireDatabase,
@@ -49,8 +56,8 @@ export class MessagingComponent implements OnInit, AfterViewChecked {
     this.message = "";
   }
   ScrollDownMessageBox() {
-    var elem = document.getElementById("div");
-    elem.scrollTop = elem.scrollHeight;
+    this.chatBox.nativeElement.scrollTop =
+      this.chatBox.nativeElement.scrollHeight;
   }
   public async slurp() {
     const response = await fetch("https://api.github.com/users/github");

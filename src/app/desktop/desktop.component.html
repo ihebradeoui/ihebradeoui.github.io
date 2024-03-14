@@ -1,5 +1,5 @@
 <div class="desk">
-  <app-messaging></app-messaging>
-  <app-messaging></app-messaging>
-  <app-messaging></app-messaging>
+  <img id="profilePhoto" [src]="profilePhotoUrl" alt="" />
+  <p-button label="Add" (click)="add()"></p-button>
+  <app-messaging *ngFor="let tab of tabs"></app-messaging>
 </div>
