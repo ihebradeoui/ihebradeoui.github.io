@@ -1,5 +1,7 @@
 import { Injectable } from "@angular/core";
+import { AngularFireAuth } from "@angular/fire/compat/auth";
 import firebase from "firebase/compat/app";
+import { Observable } from "rxjs";
 import { environment } from "src/environments/environment";
 
 @Injectable({
@@ -8,7 +10,11 @@ import { environment } from "src/environments/environment";
 export class AuthService {
   fireApp2 = firebase.initializeApp(environment.firebase, "tempApp");
 
-  constructor() {}
+  currentUser: Observable<firebase.User>;
+
+  constructor(private afAuth: AngularFireAuth) {
+    this.currentUser = this.afAuth.authState;
+  }
 
   CreateNewUser(email: string, password: string) {
     return new Promise((resolve, reject) => {

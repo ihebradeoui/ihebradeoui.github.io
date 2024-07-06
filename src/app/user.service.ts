@@ -40,14 +40,13 @@ export class UserService {
   }
 
   getUserByEmail(email: any): Observable<any> {
-    console.log(email);
     return this.db
       .list("users", (ref) => ref.orderByChild("email").equalTo(email))
       .snapshotChanges()
       .pipe(
         map((changes) =>
           changes.map((c) => ({
-            data: c.payload.val() as User,
+            data: c.payload.val() as User
           }))
         )
       );

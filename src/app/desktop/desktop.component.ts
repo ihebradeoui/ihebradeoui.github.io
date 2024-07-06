@@ -15,22 +15,28 @@ export class DesktopComponent implements OnInit {
     private userService: UserService,
     private auth: AuthService,
     private sanitizer: DomSanitizer
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.getProfilePhoto();
   }
   getProfilePhoto() {
-    this.userService
-      .getUserByEmail(this.auth.CurrentUserEmail())
-      .subscribe((user) => {
-        console.log(user);
-        console.log(user[0].data.profilePhoto);
-        this.profilePhotoUrl = user[0].data.profilePhoto;
-        // this.sanitizer.bypassSecurityTrustResourceUrl(
-        //   `data:image/png;base64, ${user[0].data.profilePhoto}`
-        // );
-      });
+    this.auth.currentUser.subscribe(
+      (user) => {
+        console.log("current email: " + user.email)
+        this.userService
+          .getUserByEmail(user.email)
+          .subscribe((fullUser) => {
+            console.log(fullUser);
+            console.log(fullUser[0].data.profilePhoto);
+            this.profilePhotoUrl = fullUser[0].data.profilePhoto;
+            // this.sanitizer.bypassSecurityTrustResourceUrl(
+            //   `data:image/png;base64, ${user[0].data.profilePhoto}`
+            // );
+          });
+      }
+    )
+
   }
 
   add() {
