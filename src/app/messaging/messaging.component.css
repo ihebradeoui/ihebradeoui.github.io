@@ -1,50 +1,100 @@
-.messageBox
-{
+.messageBox {
     width: 300px;
     margin-top: 100px;
-    background-color: #FFF8C9 ;
+    background-color: #FFF8C9;
     border-radius: 3%;
-    padding: 2%;
     box-shadow: 0px 0px 20px 0px rgba(0, 0, 0, 0.5);
     opacity: 0.9;
     display: flex;
     flex-direction: column;
-    align-items: center;
     padding: 10px;
-    height: 10% important!;
     max-height: 400px;
-    overflow: scroll;  
-             
+    overflow: scroll;
+    min-height: 300px;
+    position: relative;
 }
-.chatBoxNgFor
-{   
+
+.chatBoxNgFor {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    margin: 5px;
-    padding: 5px;
+    margin-top: -9px;
+    margin-bottom: -10px;
+    width: auto;
+    height: fit-content !important;
+    padding-top: 0%;
+}
+
+.incomingMessage {
+    text-align: left;
+    align-self: flex-start;
+    padding: 3%;
+    background-color: rgb(173, 94, 94);
     border-radius: 5px;
-    background-color: #F0F0F0;
     box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.5);
-    max-width: 200px;
+    color: white;
     word-wrap: break-word;
     word-break: break-all;
     overflow-wrap: break-word;
     white-space: pre-wrap;
-    text-align: left;
-    font-size: 12px;
-    color: black;
-    opacity: 0.9;
-    
+    font-size: 14px;
+    opacity: 1;
 }
 
+.outcomingMessage {
+    opacity: 1;
+    border-radius: 5px;
+    text-align: right;
+    align-self: flex-end;
+    margin-left: auto;
+    background-color: rgb(105, 105, 235);
+    padding: 3%;
+    box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.5);
+    color: white;
+    word-wrap: break-word;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    font-size: 14px;
+}
 
-::-webkit-scrollbar 
-{
+.receiver {
+    text-align: center;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+    padding: 5px;
+    margin: 5px;
+    margin-top: -10px;
+    box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.5);
+    font-size: 14px;
+    position: fixed;
+    align-self: center;
+}
+
+.send {
+    background-color: #2a2caf;
+    color: white;
+    border-radius: 5px;
+    box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.5);
+    font-size: 12px;
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+}
+
+.inputMessage {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+}
+
+::-webkit-scrollbar {
     display: none;
 }
 
-[draggable=true] 
-{
+[draggable=true] {
     cursor: move;
 }

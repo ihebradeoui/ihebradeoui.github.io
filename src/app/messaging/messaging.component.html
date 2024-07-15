@@ -1,9 +1,12 @@
 <div class="messageBox" #chatBox cdkDrag [draggable]="true">
+  <div class="receiver">{{receiver}}</div>
   <div class="chatBoxNgFor" *ngFor="let item of data">
-    <p>{{ item }}</p>
+    <p class="incomingMessage" *ngIf="item.from==receiver">{{ item.content }}</p>
+    <p class="outcomingMessage" *ngIf="item.from==user">{{ item.content }}</p>
+
   </div>
   <br />
 
-  <input [(ngModel)]="message" type="text" (keydown.enter)="send()" />
-  <button (click)="send()">send</button>
+  <input class="inputMessage" [(ngModel)]="message" type="text" (keydown.enter)="send()" />
+  <button class="send" (click)="send()">send</button>
 </div>

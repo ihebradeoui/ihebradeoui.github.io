@@ -21,6 +21,7 @@ import { PasswordModule } from "primeng/password";
 import { DragDropModule } from "@angular/cdk/drag-drop";
 import { DesktopComponent } from './desktop/desktop.component';
 
+
 @NgModule({
   declarations: [
     AppComponent,
@@ -49,4 +50,4 @@ import { DesktopComponent } from './desktop/desktop.component';
   providers: [],
   bootstrap: [AppComponent],
 })
-export class AppModule {}
+export class AppModule { }

@@ -3,21 +3,11 @@
     <h2>Login</h2>
     <form [formGroup]="loginForm">
       <div class="p-field">
-        <input
-          type="text"
-          formControlName="email"
-          placeholder="Email"
-          id="email"
-          pInputText
-        />
+        <input type="text" formControlName="email" placeholder="Email" id="email" pInputText />
       </div>
       <div class="p-field">
-        <input
-          type="password"
-          id="password"
-          formControlName="password"
-          pPassword
-        />
+        <input type="password" id="password" formControlName="password" placeholder="Password" pPassword
+          [feedback]=false indicator="false" />
       </div>
       <div class="butts">
         <button type="submit" (click)="login()" pButton>Login</button>

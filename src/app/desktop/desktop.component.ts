@@ -9,8 +9,9 @@ import { DomSanitizer } from "@angular/platform-browser";
   styleUrls: ["./desktop.component.css"],
 })
 export class DesktopComponent implements OnInit {
-  tabs: Array<number> = [];
+  tabs: Array<string> = [];
   profilePhotoUrl;
+  userToAdd;
   constructor(
     private userService: UserService,
     private auth: AuthService,
@@ -39,7 +40,17 @@ export class DesktopComponent implements OnInit {
 
   }
 
-  add() {
-    this.tabs.push(this.tabs.length);
+  addTab(userToAd) {
+    // console.log(userToAd)
+    this.userService.getUserByEmail(userToAd).subscribe((user) => {
+      if (user) {
+        console.log(user)
+        this.tabs.push(user[0].data.email)
+      }
+      else
+        console.log("user not found")
+    }
+    )
+    this.userToAdd = "";
   }
 }

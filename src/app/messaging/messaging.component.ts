@@ -2,13 +2,18 @@ import {
   AfterViewChecked,
   Component,
   ElementRef,
+  Input,
   OnInit,
-  ViewChild,
+  ViewChild
 } from "@angular/core";
 import { AngularFireDatabase } from "@angular/fire/compat/database";
+import { Timestamp } from 'firebase/firestore';
 import { FormGroup } from "@angular/forms";
 import { Router } from "@angular/router";
 import { AuthService } from "../auth.service";
+import { MessagingService } from "../Services/messaging/messaging.service";
+import { Message } from "../Models/message";
+import { UserService } from "../user.service";
 
 @Component({
   selector: "app-messaging",
@@ -16,44 +21,46 @@ import { AuthService } from "../auth.service";
   styleUrls: ["./messaging.component.css"],
 })
 export class MessagingComponent implements OnInit, AfterViewChecked {
+  @Input() receiver = '';
   title = "the_project";
   messageForm: FormGroup;
   message = "";
   data: any;
-  tabs: Array<number> = [1];
+  tabs: Array<string> = [];
+  user: any;
   @ViewChild("chatBox", { static: false }) chatBox: ElementRef;
   constructor(
     private router: Router,
     private db: AngularFireDatabase,
-    private auth: AuthService
-  ) {}
+    private auth: AuthService,
+    private messagingService: MessagingService,
+    private userService: UserService) {
+    this.auth.currentUser.subscribe((user) => {
+      this.user = user.email;
+    });
+    console.log(this.receiver)
+  }
   ngOnInit(): void {
     if (this.auth.Auth().currentUser == null) this.router.navigate(["/"]);
-    const ref = this.db.list("items");
-    ref.valueChanges().subscribe((data) => {
-      this.data = data;
-    });
+    this.auth.currentUser.subscribe((user) => {
+      this.messagingService.getmessageBySenderAndReceiver(user.email, this.receiver).subscribe((data) => {
+        this.data = data;
+      });
+    })
     this.ScrollDownMessageBox();
-  }
-  addTab() {
-    this.tabs.push(this.tabs[this.tabs.length - 1] + 1);
-    console.log(this.tabs);
+
   }
   ngAfterViewChecked(): void {
     this.ScrollDownMessageBox();
   }
   public send() {
-    const ref = this.db.list("items");
-    console.log(this.auth.CurrentUserEmail().split("@")[0]);
-    ref
-      .push(this.auth.CurrentUserEmail().split("@")[0] + " : " + this.message)
-      .then(() => {
-        this.ScrollDownMessageBox();
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-    this.message = "";
+    console.log(this.receiver)
+    this.auth.currentUser.subscribe((user) => {
+      this.messagingService.createmessage(new Message(
+        user.email, this.receiver, this.message, Timestamp.now().toMillis().toString()
+      ))
+      this.message = "";
+    })
   }
   ScrollDownMessageBox() {
     this.chatBox.nativeElement.scrollTop =
