@@ -14,6 +14,12 @@ export class MovementService {
   private localCoordinatesCache: {[lobbyUserId: string]: Coordinates} = {};
   private lastUpdateTime: {[lobbyUserId: string]: number} = {};
   private readonly UPDATE_THROTTLE_MS = 100; // Limit updates to once per 100ms per user
+  private subscriptions: {[lobby: string]: any} = {}; // Track active subscriptions
+  private performanceStats = {
+    updatesSkipped: 0,
+    updatesProcessed: 0,
+    cacheHits: 0
+  };
   
   CoordinatesLists: AngularFireList<any>;
 
@@ -90,9 +96,11 @@ export class MovementService {
     // Check local cache first to avoid unnecessary updates
     if (this.localCoordinatesCache[lobbyUserId] && 
         this.coordinatesEqual(this.localCoordinatesCache[lobbyUserId], coordinates)) {
+      this.performanceStats.updatesSkipped++;
       return; // No change, skip update
     }
     
+    this.performanceStats.updatesProcessed++;
     // Queue the update for throttled processing
     this.updateQueue.next({ coordinates, lobby });
   }
@@ -113,7 +121,58 @@ export class MovementService {
   // Get cached coordinates for immediate use (reduces Firebase reads)
   getCachedCoordinates(lobby: string, user: string): Coordinates | null {
     const lobbyUserId = `${lobby}:${user}`;
+    if (this.localCoordinatesCache[lobbyUserId]) {
+      this.performanceStats.cacheHits++;
+    }
     return this.localCoordinatesCache[lobbyUserId] || null;
+  }
+
+  // Get performance statistics for monitoring
+  getPerformanceStats() {
+    const totalRequests = this.performanceStats.updatesSkipped + this.performanceStats.updatesProcessed;
+    return {
+      ...this.performanceStats,
+      optimizationRate: totalRequests > 0 ? (this.performanceStats.updatesSkipped / totalRequests * 100).toFixed(1) + '%' : '0%'
+    };
+  }
+
+  // Reset performance statistics
+  resetPerformanceStats(): void {
+    this.performanceStats = {
+      updatesSkipped: 0,
+      updatesProcessed: 0,
+      cacheHits: 0
+    };
+  }
+
+  // Clean up resources when leaving a lobby
+  leaveLobby(lobby: string): void {
+    // Clean up cached data for this lobby
+    Object.keys(this.localCoordinatesCache).forEach(key => {
+      if (key.startsWith(`${lobby}:`)) {
+        delete this.localCoordinatesCache[key];
+        delete this.lastUpdateTime[key];
+      }
+    });
+  }
+
+  // Optimize memory usage by periodically cleaning old entries
+  private cleanupOldEntries(): void {
+    const now = Date.now();
+    const CLEANUP_THRESHOLD = 300000; // 5 minutes
+    
+    Object.keys(this.lastUpdateTime).forEach(key => {
+      if (now - this.lastUpdateTime[key] > CLEANUP_THRESHOLD) {
+        delete this.lastUpdateTime[key];
+        delete this.localCoordinatesCache[key];
+      }
+    });
+  }
+
+  // Initialize cleanup interval
+  startCleanupInterval(): void {
+    // Clean up every 5 minutes
+    setInterval(() => this.cleanupOldEntries(), 300000);
   }
 
 }

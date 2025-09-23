@@ -88,6 +88,12 @@ export class Movement {
         if (oldPos.x !== ball.position.x || oldPos.y !== ball.position.y || oldPos.z !== ball.position.z) {
             // Use the optimized update method that includes throttling
             movementService.updateCoordinatesByUser(Coordinates.makeCoordinatesFromVector3(user, ball.position), lobby);
+            
+            // Log performance stats every 100 updates (optional - can be removed for production)
+            if (time % 100 === 0) {
+                const stats = movementService.getPerformanceStats();
+                console.log('Firebase Optimization Stats:', stats);
+            }
         }
     }
     static calculateAngle(camera: Camera, ball: Mesh) {

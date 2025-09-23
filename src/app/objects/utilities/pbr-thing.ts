@@ -36,7 +36,18 @@ export class pbrThing {
         }
         this.engine = new Engine(this.canvas, true);
         this.scene = this.CreateScene();
+        
+        // Start cleanup interval for memory management
+        this.movementService.startCleanupInterval();
+        
         this.engine.runRenderLoop(() => this.scene.render())
+        
+        // Clean up when window/tab is closed
+        window.addEventListener('beforeunload', () => {
+            if (this.lobby) {
+                this.movementService.leaveLobby(this.lobby);
+            }
+        });
     }
 
 
