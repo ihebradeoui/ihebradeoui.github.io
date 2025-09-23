@@ -7,6 +7,7 @@ import { Movement } from "./movement";
 import { UserName } from "./writer";
 import MeshWriter from 'meshwriter'
 import { Animal } from "../animals/animal";
+import { throttleTime, distinctUntilChanged } from 'rxjs/operators';
 
 
 export class pbrThing {
@@ -105,54 +106,63 @@ export class pbrThing {
 
 
 
-        this.movementService.getAllCoordinates(this.lobby).subscribe((res) => {
-            this.listCoordinates(res, ball)
-
-        });
+        // Optimized Firebase subscription with throttling
+        this.movementService.getAllCoordinates(this.lobby)
+            .pipe(
+                throttleTime(50), // Limit processing to 20 times per second
+                distinctUntilChanged() // Only process when data actually changes
+            )
+            .subscribe((res) => {
+                this.listCoordinates(res, ball);
+            });
         //this.username=this.makeWriter(scene,this.user,ball.position,this.user)
         return scene;
     }
     listCoordinates(entries: any[], ball: Mesh) {
+        if (!entries || entries.length === 0) {
+            return; // Exit early if no data
+        }
+        
         this.Coordinates = [];
         entries.forEach(element => {
             let y = element.payload.toJSON()
             y["$key"] = element.user
-            if (y["user"] != this.user) { this.Coordinates.push(y as Coordinates); }
-        })
-        this.Coordinates.forEach(element => {
-            if (!this.users.includes(element.user)) {
-                var ballo = ball.clone("ball" + element.user)
-                ballo.position = new Vector3(0, 1, 10);
-                ballo.checkCollisions = true
-                ballo.material = this.CreateGroundMaterial(1);
-                ballo.position.x = element.x
-                ballo.position.y = element.y
-                ballo.position.z = element.z
-                this.balls.push(ballo)
-                this.users.push(element.user)
-                // this.usernames.push(this.makeWriter(this.scene,element.user,new Vector3(element.x,element.y+2,element.z),element.user))
-            }
-            else {
-                this.balls.forEach(ballj => {
-                    if (ballj.name == "ball" + element.user) {
-                        ballj.position.x = element.x
-                        ballj.position.y = element.y
-                        ballj.position.z = element.z
-                    }
-
-                })
-                //         this.usernames.forEach((username)=>
-                //             {
-                //             if(username.username==element.user)
-                //             {
-                //                 username.mesh.position.x=element.x
-                //                 username.mesh.position.y=element.y
-                //                 username.mesh.position.z=element.z
-                //             }}
-                //             )
+            if (y["user"] != this.user) { 
+                this.Coordinates.push(y as Coordinates); 
             }
         });
+        
+        // Batch process coordinate updates to reduce DOM manipulations
+        this.updatePlayerPositions(ball);
+    }
 
+    private updatePlayerPositions(ball: Mesh) {
+        this.Coordinates.forEach(element => {
+            if (!this.users.includes(element.user)) {
+                // Create new player
+                var ballo = ball.clone("ball" + element.user)
+                ballo.position = new Vector3(element.x, element.y, element.z);
+                ballo.checkCollisions = true
+                ballo.material = this.CreateGroundMaterial(1);
+                this.balls.push(ballo)
+                this.users.push(element.user)
+            } else {
+                // Update existing player position
+                const ballIndex = this.balls.findIndex(ballj => ballj.name === "ball" + element.user);
+                if (ballIndex !== -1) {
+                    const targetBall = this.balls[ballIndex];
+                    // Only update if position changed significantly (reduce unnecessary updates)
+                    const threshold = 0.1;
+                    if (Math.abs(targetBall.position.x - element.x) > threshold ||
+                        Math.abs(targetBall.position.y - element.y) > threshold ||
+                        Math.abs(targetBall.position.z - element.z) > threshold) {
+                        targetBall.position.x = element.x;
+                        targetBall.position.y = element.y;
+                        targetBall.position.z = element.z;
+                    }
+                }
+            }
+        });
     }
     CreateGroundMaterial(uv: number): PBRMaterial {
         const groundMat = new PBRMaterial("groundMat", this.scene)
