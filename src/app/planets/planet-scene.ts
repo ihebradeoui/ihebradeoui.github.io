@@ -11,7 +11,12 @@ import {
   ActionManager,
   ExecuteCodeAction,
   CubeTexture,
-  DynamicTexture
+  DynamicTexture,
+  PointLight,
+  PBRMaterial,
+  Texture,
+  GlowLayer,
+  ParticleSystem
 } from "@babylonjs/core";
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Subscription } from 'rxjs';
@@ -23,6 +28,9 @@ export interface PlanetData {
   position: { x: number; y: number; z: number };
   color: string;
   size: number;
+  orbitRadius?: number;
+  orbitSpeed?: number;
+  orbitAngle?: number;
 }
 
 export class PlanetScene {
@@ -33,6 +41,8 @@ export class PlanetScene {
   private planetDataMap: Map<string, PlanetData> = new Map();
   private selectedPlanet: Mesh | null = null;
   private subscriptions: Subscription[] = [];
+  private sun: Mesh | null = null;
+  private glowLayer: GlowLayer | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true);
@@ -58,81 +68,262 @@ export class PlanetScene {
   private createScene(): Scene {
     const scene = new Scene(this.engine);
     this.scene = scene; // Assign early so methods can use it
-    scene.clearColor = new Color3(0.05, 0.05, 0.15).toColor4();
+    
+    // Deep space background color
+    scene.clearColor = new Color3(0.01, 0.01, 0.02).toColor4();
 
-    // Camera
+    // Camera - positioned to view the orbital system
     this.camera = new ArcRotateCamera(
       "camera",
       Math.PI / 2,
       Math.PI / 3,
-      50,
+      80,
       Vector3.Zero(),
       scene
     );
     this.camera.attachControl(this.canvas, true);
-    this.camera.lowerRadiusLimit = 10;
-    this.camera.upperRadiusLimit = 200;
+    this.camera.lowerRadiusLimit = 20;
+    this.camera.upperRadiusLimit = 300;
+    this.camera.wheelPrecision = 20;
+    this.camera.panningSensibility = 0;
 
-    // Light
-    const light = new HemisphericLight("light", new Vector3(0, 1, 0), scene);
-    light.intensity = 0.8;
+    // Create glow layer for luminous effects
+    this.glowLayer = new GlowLayer("glow", scene);
+    this.glowLayer.intensity = 0.7;
 
-    // Skybox
-    const envTex = CubeTexture.CreateFromPrefilteredData("/assets/pbr/environment.env", scene);
-    scene.environmentTexture = envTex;
-    scene.createDefaultSkybox(envTex, true, 1000);
+    // Create sun at center
+    this.createSun();
 
-    // Create some initial planets if none exist
+    // Main light source from the sun
+    const sunLight = new PointLight("sunLight", Vector3.Zero(), scene);
+    sunLight.intensity = 2.0;
+    sunLight.range = 500;
+    sunLight.diffuse = new Color3(1.0, 0.95, 0.8);
+    sunLight.specular = new Color3(1.0, 0.95, 0.8);
+
+    // Subtle ambient light for visibility
+    const ambientLight = new HemisphericLight("ambientLight", new Vector3(0, 1, 0), scene);
+    ambientLight.intensity = 0.15;
+    ambientLight.diffuse = new Color3(0.2, 0.2, 0.3);
+
+    // Enhanced space skybox
+    this.createSpaceSkybox(scene);
+
+    // Create star field particles
+    this.createStarField();
+
+    // Create initial planets with orbital paths
     this.createInitialPlanets();
 
     return scene;
   }
 
+  private createSun(): void {
+    // Create the sun sphere
+    this.sun = MeshBuilder.CreateSphere(
+      "sun",
+      { diameter: 8, segments: 32 },
+      this.scene
+    );
+    this.sun.position = Vector3.Zero();
+
+    // Create glowing sun material
+    const sunMaterial = new StandardMaterial("sunMaterial", this.scene);
+    sunMaterial.emissiveColor = new Color3(1.0, 0.8, 0.3);
+    sunMaterial.diffuseColor = new Color3(1.0, 0.9, 0.4);
+    sunMaterial.specularColor = new Color3(0, 0, 0);
+    this.sun.material = sunMaterial;
+
+    // Add sun to glow layer
+    if (this.glowLayer) {
+      this.glowLayer.addIncludedOnlyMesh(this.sun);
+    }
+
+    // Slow rotation for the sun
+    this.scene.registerBeforeRender(() => {
+      if (this.sun) {
+        this.sun.rotation.y += 0.001;
+      }
+    });
+  }
+
+  private createSpaceSkybox(scene: Scene): void {
+    // Create a much larger skybox for deep space feel
+    const skybox = MeshBuilder.CreateBox("skybox", { size: 2000 }, scene);
+    const skyboxMaterial = new StandardMaterial("skyboxMaterial", scene);
+    
+    skyboxMaterial.backFaceCulling = false;
+    skyboxMaterial.disableLighting = true;
+    skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
+    skyboxMaterial.specularColor = new Color3(0, 0, 0);
+    
+    // Use the existing environment texture if available, otherwise create a dark space
+    try {
+      const envTex = CubeTexture.CreateFromPrefilteredData("/assets/pbr/environment.env", scene);
+      skyboxMaterial.reflectionTexture = envTex;
+      skyboxMaterial.reflectionTexture.coordinatesMode = Texture.SKYBOX_MODE;
+      scene.environmentTexture = envTex;
+    } catch (e) {
+      // Fallback to dark starry appearance
+      skyboxMaterial.emissiveColor = new Color3(0.02, 0.02, 0.05);
+    }
+    
+    skybox.material = skyboxMaterial;
+    skybox.infiniteDistance = true;
+  }
+
+  private createStarField(): void {
+    // Create particle system for distant stars
+    const particleSystem = new ParticleSystem("stars", 2000, this.scene);
+    
+    // Create a simple emitter point
+    particleSystem.emitter = Vector3.Zero();
+    particleSystem.minEmitBox = new Vector3(-500, -500, -500);
+    particleSystem.maxEmitBox = new Vector3(500, 500, 500);
+
+    // Create a simple white dot texture programmatically
+    const starTexture = new DynamicTexture("starTexture", { width: 32, height: 32 }, this.scene, false);
+    const context = starTexture.getContext();
+    const centerX = 16;
+    const centerY = 16;
+    const radius = 12;
+    
+    // Draw a radial gradient for the star
+    const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 32, 32);
+    starTexture.update();
+    
+    particleSystem.particleTexture = starTexture;
+    particleSystem.minSize = 0.3;
+    particleSystem.maxSize = 1.5;
+    
+    // Color of stars - white to slight blue tint
+    particleSystem.color1 = new Color3(1, 1, 1).toColor4();
+    particleSystem.color2 = new Color3(0.8, 0.8, 1.0).toColor4();
+    particleSystem.colorDead = new Color3(0.5, 0.5, 0.6).toColor4();
+
+    // Lifetime
+    particleSystem.minLifeTime = Number.MAX_VALUE;
+    particleSystem.maxLifeTime = Number.MAX_VALUE;
+
+    // Emission rate
+    particleSystem.emitRate = 2000;
+    particleSystem.updateSpeed = 0.001;
+
+    particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
+
+    // Start the particle system
+    particleSystem.start();
+  }
+
   private createInitialPlanets(): void {
-    // Create a few placeholder planets that will be replaced by Firebase data
+    // Create planets with orbital parameters (distance from sun, orbital speed)
     const initialPlanets = [
-      { position: new Vector3(0, 0, 0), color: "#ff6b6b", size: 3 },
-      { position: new Vector3(15, 5, 10), color: "#4ecdc4", size: 2.5 },
-      { position: new Vector3(-12, -3, 15), color: "#ffe66d", size: 2 },
-      { position: new Vector3(10, 8, -15), color: "#a8dadc", size: 2.8 },
-      { position: new Vector3(-15, 2, -8), color: "#f4a261", size: 2.2 },
+      { orbitRadius: 15, color: "#8B7355", size: 1.8, speed: 0.015, name: "Mercury" },
+      { orbitRadius: 22, color: "#FFA54F", size: 2.3, speed: 0.012, name: "Venus" },
+      { orbitRadius: 30, color: "#4169E1", size: 2.5, speed: 0.010, name: "Earth" },
+      { orbitRadius: 38, color: "#CD5C5C", size: 2.0, speed: 0.008, name: "Mars" },
+      { orbitRadius: 55, color: "#DAA520", size: 4.5, speed: 0.005, name: "Jupiter" },
+      { orbitRadius: 70, color: "#F4A460", size: 4.0, speed: 0.004, name: "Saturn" },
+      { orbitRadius: 85, color: "#4682B4", size: 3.2, speed: 0.003, name: "Uranus" },
+      { orbitRadius: 100, color: "#1E90FF", size: 3.0, speed: 0.002, name: "Neptune" },
     ];
 
     initialPlanets.forEach((data, index) => {
       const planetId = `planet_${index}`;
+      const startAngle = (Math.PI * 2 * index) / initialPlanets.length;
+      
       this.createPlanet(planetId, {
         id: planetId,
-        name: `Planet ${index + 1}`,
+        name: data.name,
         description: 'Click to edit',
-        position: { x: data.position.x, y: data.position.y, z: data.position.z },
+        position: { 
+          x: Math.cos(startAngle) * data.orbitRadius, 
+          y: 0, 
+          z: Math.sin(startAngle) * data.orbitRadius 
+        },
         color: data.color,
-        size: data.size
+        size: data.size,
+        orbitRadius: data.orbitRadius,
+        orbitSpeed: data.speed,
+        orbitAngle: startAngle
       });
     });
   }
 
   private createPlanet(id: string, data: PlanetData): Mesh {
-    // Create planet sphere
+    // Create planet sphere with higher detail
     const planet = MeshBuilder.CreateSphere(
       id,
-      { diameter: data.size },
+      { diameter: data.size, segments: 32 },
       this.scene
     );
     planet.position = new Vector3(data.position.x, data.position.y, data.position.z);
 
-    // Material
-    const material = new StandardMaterial(`mat_${id}`, this.scene);
-    material.diffuseColor = Color3.FromHexString(data.color);
-    material.specularColor = new Color3(0.2, 0.2, 0.2);
-    material.emissiveColor = Color3.FromHexString(data.color).scale(0.2);
+    // Enhanced PBR Material for realistic planet appearance
+    const material = new PBRMaterial(`mat_${id}`, this.scene);
+    
+    // Base color
+    material.albedoColor = Color3.FromHexString(data.color);
+    
+    // Metallic and roughness for realistic surface
+    material.metallic = 0.1;
+    material.roughness = 0.8;
+    
+    // Subtle emissive for visibility
+    material.emissiveColor = Color3.FromHexString(data.color).scale(0.05);
+    
+    // Specular highlights from sun
+    material.specularIntensity = 0.3;
+    
+    // Enable lighting from point light
+    material.directIntensity = 1.0;
+    
     planet.material = material;
 
-    // Add floating animation
-    let time = Math.random() * Math.PI * 2;
+    // Store orbital parameters
+    const orbitRadius = data.orbitRadius || 0;
+    const orbitSpeed = data.orbitSpeed || 0;
+    let orbitAngle = data.orbitAngle || 0;
+
+    // Create orbital path visualization (subtle ring)
+    if (orbitRadius > 0) {
+      const orbitPath = MeshBuilder.CreateTorus(
+        `orbit_${id}`,
+        { 
+          diameter: orbitRadius * 2, 
+          thickness: 0.05, 
+          tessellation: 64 
+        },
+        this.scene
+      );
+      orbitPath.position = Vector3.Zero();
+      orbitPath.rotation.x = Math.PI / 2;
+      
+      const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
+      orbitMaterial.emissiveColor = new Color3(0.1, 0.1, 0.15);
+      orbitMaterial.alpha = 0.2;
+      orbitMaterial.wireframe = false;
+      orbitPath.material = orbitMaterial;
+    }
+
+    // Add orbital motion and rotation
     this.scene.registerBeforeRender(() => {
-      time += 0.01;
-      planet.position.y = data.position.y + Math.sin(time) * 0.5;
-      planet.rotation.y += 0.005;
+      // Orbital motion around the sun
+      if (orbitRadius > 0 && orbitSpeed > 0) {
+        orbitAngle += orbitSpeed;
+        planet.position.x = Math.cos(orbitAngle) * orbitRadius;
+        planet.position.z = Math.sin(orbitAngle) * orbitRadius;
+        planet.position.y = 0; // Keep in the same plane
+      }
+      
+      // Planet self-rotation
+      planet.rotation.y += 0.01;
     });
 
     // Create name label
@@ -256,6 +447,11 @@ export class PlanetScene {
       const planet = this.planets.get(planetId);
       const storedData = this.planetDataMap.get(planetId);
       if (planet && storedData) {
+        const material = planet.material as PBRMaterial | StandardMaterial;
+        const color = (material as any).albedoColor 
+          ? (material as PBRMaterial).albedoColor.toHexString() 
+          : (material as StandardMaterial).diffuseColor.toHexString();
+        
         const planetData: PlanetData = {
           id: planetId,
           name: nameInput.value,
@@ -265,8 +461,11 @@ export class PlanetScene {
             y: planet.position.y,
             z: planet.position.z
           },
-          color: (planet.material as StandardMaterial).diffuseColor.toHexString(),
-          size: storedData.size // Use stored size instead of calculating
+          color: color,
+          size: storedData.size,
+          orbitRadius: storedData.orbitRadius,
+          orbitSpeed: storedData.orbitSpeed,
+          orbitAngle: storedData.orbitAngle
         };
 
         // Save to Firebase
