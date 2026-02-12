@@ -54,6 +54,7 @@ export class PlanetScene {
 
   private createScene(): Scene {
     const scene = new Scene(this.engine);
+    this.scene = scene; // Assign early so methods can use it
     scene.clearColor = new Color3(0.05, 0.05, 0.15).toColor4();
 
     // Camera
