@@ -14,6 +14,7 @@ import {
   DynamicTexture
 } from "@babylonjs/core";
 import { AngularFireDatabase } from '@angular/fire/compat/database';
+import { Subscription } from 'rxjs';
 
 export interface PlanetData {
   id?: string;
@@ -29,7 +30,9 @@ export class PlanetScene {
   private engine: Engine;
   private camera: ArcRotateCamera;
   private planets: Map<string, Mesh> = new Map();
+  private planetDataMap: Map<string, PlanetData> = new Map();
   private selectedPlanet: Mesh | null = null;
+  private subscriptions: Subscription[] = [];
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true);
@@ -143,8 +146,9 @@ export class PlanetScene {
       })
     );
 
-    // Store reference
+    // Store references
     this.planets.set(id, planet);
+    this.planetDataMap.set(id, data);
 
     return planet;
   }
@@ -196,13 +200,21 @@ export class PlanetScene {
     const descInput = document.getElementById('planetDescription') as HTMLTextAreaElement;
 
     if (modal && nameInput && descInput) {
-      // Load current planet data
-      this.database.object(`planets/${planetId}`).valueChanges().subscribe((data: any) => {
-        if (data) {
-          nameInput.value = data.name || '';
-          descInput.value = data.description || '';
-        }
-      });
+      // Load current planet data (use stored data or fetch once)
+      const storedData = this.planetDataMap.get(planetId);
+      if (storedData) {
+        nameInput.value = storedData.name || '';
+        descInput.value = storedData.description || '';
+      } else {
+        // Fetch once if not in cache
+        const sub = this.database.object(`planets/${planetId}`).valueChanges().subscribe((data: any) => {
+          if (data) {
+            nameInput.value = data.name || '';
+            descInput.value = data.description || '';
+          }
+          sub.unsubscribe();
+        });
+      }
 
       modal.style.display = 'block';
       (modal as any).dataset.planetId = planetId;
@@ -242,7 +254,8 @@ export class PlanetScene {
 
     if (planetId && nameInput && descInput) {
       const planet = this.planets.get(planetId);
-      if (planet) {
+      const storedData = this.planetDataMap.get(planetId);
+      if (planet && storedData) {
         const planetData: PlanetData = {
           id: planetId,
           name: nameInput.value,
@@ -253,11 +266,14 @@ export class PlanetScene {
             z: planet.position.z
           },
           color: (planet.material as StandardMaterial).diffuseColor.toHexString(),
-          size: planet.scaling.x * 2 // diameter
+          size: storedData.size // Use stored size instead of calculating
         };
 
         // Save to Firebase
         this.database.object(`planets/${planetId}`).set(planetData);
+        
+        // Update local cache
+        this.planetDataMap.set(planetId, planetData);
 
         // Update the label
         this.updatePlanetLabel(planet, nameInput.value);
@@ -281,7 +297,7 @@ export class PlanetScene {
 
   private loadPlanets(): void {
     // Listen to Firebase for all planets
-    this.database.list('planets').snapshotChanges().subscribe((planets: any[]) => {
+    const sub = this.database.list('planets').snapshotChanges().subscribe((planets: any[]) => {
       planets.forEach((planet) => {
         const planetId = planet.key;
         const data = planet.payload.val() as PlanetData;
@@ -293,6 +309,7 @@ export class PlanetScene {
             const existingPlanet = this.planets.get(planetId);
             if (existingPlanet) {
               this.updatePlanetLabel(existingPlanet, data.name);
+              this.planetDataMap.set(planetId, data);
             }
           } else {
             // Create new planet
@@ -301,9 +318,15 @@ export class PlanetScene {
         }
       });
     });
+    this.subscriptions.push(sub);
   }
 
   public dispose(): void {
+    // Unsubscribe from all Firebase subscriptions
+    this.subscriptions.forEach(sub => sub.unsubscribe());
+    this.subscriptions = [];
+    
+    // Dispose Babylon.js resources
     this.scene.dispose();
     this.engine.dispose();
   }
