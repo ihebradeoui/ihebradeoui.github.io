@@ -43,6 +43,7 @@ export class PlanetScene {
   private subscriptions: Subscription[] = [];
   private sun: Mesh | null = null;
   private glowLayer: GlowLayer | null = null;
+  private animationCallbacks: (() => void)[] = [];
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true);
@@ -115,7 +116,37 @@ export class PlanetScene {
     // Create initial planets with orbital paths
     this.createInitialPlanets();
 
+    // Setup unified animation loop
+    this.setupAnimationLoop();
+
     return scene;
+  }
+
+  private setupAnimationLoop(): void {
+    // Single animation callback for all scene animations
+    this.scene.registerBeforeRender(() => {
+      // Rotate sun
+      if (this.sun) {
+        this.sun.rotation.y += 0.001;
+      }
+
+      // Update all planet orbits and rotations
+      this.planetDataMap.forEach((data, id) => {
+        const planet = this.planets.get(id);
+        if (planet && data.orbitRadius && data.orbitSpeed && data.orbitAngle !== undefined) {
+          // Update orbit angle
+          data.orbitAngle += data.orbitSpeed;
+          
+          // Calculate new position
+          planet.position.x = Math.cos(data.orbitAngle) * data.orbitRadius;
+          planet.position.z = Math.sin(data.orbitAngle) * data.orbitRadius;
+          planet.position.y = 0;
+          
+          // Planet self-rotation
+          planet.rotation.y += 0.01;
+        }
+      });
+    });
   }
 
   private createSun(): void {
@@ -138,13 +169,8 @@ export class PlanetScene {
     if (this.glowLayer) {
       this.glowLayer.addIncludedOnlyMesh(this.sun);
     }
-
-    // Slow rotation for the sun
-    this.scene.registerBeforeRender(() => {
-      if (this.sun) {
-        this.sun.rotation.y += 0.001;
-      }
-    });
+    
+    // Note: Sun rotation is handled in the unified animation loop
   }
 
   private createSpaceSkybox(scene: Scene): void {
@@ -174,6 +200,9 @@ export class PlanetScene {
 
   private createStarField(): void {
     // Create particle system for distant stars
+    // Note: Using 2000 immortal particles (lifetime = Number.MAX_VALUE) for static starfield
+    // This is intentional for performance - stars don't need to respawn
+    // Consider reducing particle count if targeting low-end devices
     const particleSystem = new ParticleSystem("stars", 2000, this.scene);
     
     // Create a simple emitter point
@@ -286,17 +315,17 @@ export class PlanetScene {
     
     planet.material = material;
 
-    // Store orbital parameters
-    const orbitRadius = data.orbitRadius || 0;
-    const orbitSpeed = data.orbitSpeed || 0;
-    let orbitAngle = data.orbitAngle || 0;
+    // Store orbital parameters in the data map (will be used by unified animation loop)
+    data.orbitRadius = data.orbitRadius || 0;
+    data.orbitSpeed = data.orbitSpeed || 0;
+    data.orbitAngle = data.orbitAngle || 0;
 
     // Create orbital path visualization (subtle ring)
-    if (orbitRadius > 0) {
+    if (data.orbitRadius > 0) {
       const orbitPath = MeshBuilder.CreateTorus(
         `orbit_${id}`,
         { 
-          diameter: orbitRadius * 2, 
+          diameter: data.orbitRadius * 2, 
           thickness: 0.05, 
           tessellation: 64 
         },
@@ -312,19 +341,7 @@ export class PlanetScene {
       orbitPath.material = orbitMaterial;
     }
 
-    // Add orbital motion and rotation
-    this.scene.registerBeforeRender(() => {
-      // Orbital motion around the sun
-      if (orbitRadius > 0 && orbitSpeed > 0) {
-        orbitAngle += orbitSpeed;
-        planet.position.x = Math.cos(orbitAngle) * orbitRadius;
-        planet.position.z = Math.sin(orbitAngle) * orbitRadius;
-        planet.position.y = 0; // Keep in the same plane
-      }
-      
-      // Planet self-rotation
-      planet.rotation.y += 0.01;
-    });
+    // Note: Orbital motion and rotation handled in unified animation loop
 
     // Create name label
     this.createNameLabel(planet, data.name);
@@ -447,10 +464,17 @@ export class PlanetScene {
       const planet = this.planets.get(planetId);
       const storedData = this.planetDataMap.get(planetId);
       if (planet && storedData) {
-        const material = planet.material as PBRMaterial | StandardMaterial;
-        const color = (material as any).albedoColor 
-          ? (material as PBRMaterial).albedoColor.toHexString() 
-          : (material as StandardMaterial).diffuseColor.toHexString();
+        const material = planet.material;
+        let color: string;
+        
+        // Use instanceof for robust type checking
+        if (material instanceof PBRMaterial) {
+          color = material.albedoColor.toHexString();
+        } else if (material instanceof StandardMaterial) {
+          color = material.diffuseColor.toHexString();
+        } else {
+          color = storedData.color; // Fallback to stored color
+        }
         
         const planetData: PlanetData = {
           id: planetId,
