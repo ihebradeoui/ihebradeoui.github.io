@@ -1,0 +1,18 @@
+<div class="planets-container">
+  <canvas id="planetsCanvas"></canvas>
+  <div id="planetModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>Edit Planet</h2>
+      <form id="planetForm">
+        <label for="planetName">Planet Name:</label>
+        <input type="text" id="planetName" name="planetName" required>
+        
+        <label for="planetDescription">Description:</label>
+        <textarea id="planetDescription" name="planetDescription" rows="4" required></textarea>
+        
+        <button type="submit">Save Planet</button>
+      </form>
+    </div>
+  </div>
+</div>

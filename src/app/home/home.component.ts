@@ -21,4 +21,9 @@ export class HomeComponent implements OnInit {
    this.router.navigate(["/"+this.lobby],{ queryParams:{user : this.username}, queryParamsHandling:'merge'})
   }
 
+  goToPlanets()
+  {
+    this.router.navigate(["/planets"])
+  }
+
 }
