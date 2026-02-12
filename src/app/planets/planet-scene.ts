@@ -138,9 +138,9 @@ export class PlanetScene {
   private setupAnimationLoop(): void {
     // Single animation callback for all scene animations
     this.scene.registerBeforeRender(() => {
-      // Rotate sun
+      // Rotate sun slowly for cozy feel
       if (this.sun) {
-        this.sun.rotation.y += 0.001;
+        this.sun.rotation.y += 0.0002; // Reduced from 0.001 for calmer atmosphere
       }
 
       // Update all planet orbits and rotations
@@ -155,8 +155,8 @@ export class PlanetScene {
           planet.position.z = Math.sin(data.orbitAngle) * data.orbitRadius;
           planet.position.y = 0;
           
-          // Planet self-rotation
-          planet.rotation.y += 0.01;
+          // Planet self-rotation - slower for cozy vibe
+          planet.rotation.y += 0.002; // Reduced from 0.01 for gentler rotation
         }
       });
     });
@@ -367,10 +367,10 @@ export class PlanetScene {
   }
 
   private createMeteorSystem(): void {
-    // Create meteors that randomly appear and fly across the scene
+    // Create meteors that randomly appear and fly across the scene - slower for cozy vibe
     this.meteorInterval = window.setInterval(() => {
       this.spawnMeteor();
-    }, 3000); // Spawn a meteor every 3 seconds
+    }, 8000); // Increased from 3000ms to 8000ms for less frequent, more peaceful meteor activity
   }
 
   private spawnMeteor(): void {
@@ -475,16 +475,16 @@ export class PlanetScene {
   }
 
   private createInitialPlanets(): void {
-    // Create planets with orbital parameters (distance from sun, orbital speed)
+    // Create planets with orbital parameters (slower speeds for cozy vibe)
     const initialPlanets = [
-      { orbitRadius: 15, color: "#8B7355", size: 1.8, speed: 0.015, name: "Mercury" },
-      { orbitRadius: 22, color: "#FFA54F", size: 2.3, speed: 0.012, name: "Venus" },
-      { orbitRadius: 30, color: "#4169E1", size: 2.5, speed: 0.010, name: "Earth" },
-      { orbitRadius: 38, color: "#CD5C5C", size: 2.0, speed: 0.008, name: "Mars" },
-      { orbitRadius: 55, color: "#DAA520", size: 4.5, speed: 0.005, name: "Jupiter" },
-      { orbitRadius: 70, color: "#F4A460", size: 4.0, speed: 0.004, name: "Saturn" },
-      { orbitRadius: 85, color: "#4682B4", size: 3.2, speed: 0.003, name: "Uranus" },
-      { orbitRadius: 100, color: "#1E90FF", size: 3.0, speed: 0.002, name: "Neptune" },
+      { orbitRadius: 15, color: "#8B7355", size: 1.8, speed: 0.002, name: "Mercury" },
+      { orbitRadius: 22, color: "#FFA54F", size: 2.3, speed: 0.0016, name: "Venus" },
+      { orbitRadius: 30, color: "#4169E1", size: 2.5, speed: 0.0013, name: "Earth" },
+      { orbitRadius: 38, color: "#CD5C5C", size: 2.0, speed: 0.0010, name: "Mars" },
+      { orbitRadius: 55, color: "#DAA520", size: 4.5, speed: 0.0007, name: "Jupiter" },
+      { orbitRadius: 70, color: "#F4A460", size: 4.0, speed: 0.0005, name: "Saturn" },
+      { orbitRadius: 85, color: "#4682B4", size: 3.2, speed: 0.0004, name: "Uranus" },
+      { orbitRadius: 100, color: "#1E90FF", size: 3.0, speed: 0.0003, name: "Neptune" },
     ];
 
     initialPlanets.forEach((data, index) => {
@@ -558,7 +558,7 @@ export class PlanetScene {
     data.orbitSpeed = data.orbitSpeed || 0;
     data.orbitAngle = data.orbitAngle || 0;
 
-    // Create orbital path visualization (subtle ring)
+    // Create orbital path visualization (subtle ring) - horizontal plane to match planet movement
     if (data.orbitRadius > 0) {
       const orbitPath = MeshBuilder.CreateTorus(
         `orbit_${id}`,
@@ -570,7 +570,7 @@ export class PlanetScene {
         this.scene
       );
       orbitPath.position = Vector3.Zero();
-      orbitPath.rotation.x = Math.PI / 2;
+      // No rotation - torus is already horizontal by default, matching XZ plane movement
       
       const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
       orbitMaterial.emissiveColor = new Color3(0.1, 0.1, 0.15);
