@@ -37,6 +37,7 @@ export interface PlanetData {
   orbitRadius?: number;
   orbitSpeed?: number;
   orbitAngle?: number;
+  actualRadius?: number; // Store actual radius for particle emitters
 }
 
 export class PlanetScene {
@@ -51,6 +52,8 @@ export class PlanetScene {
   private glowLayer: GlowLayer | null = null;
   private animationCallbacks: (() => void)[] = [];
   private meteorParticleSystems: ParticleSystem[] = [];
+  private meteorInterval: number | null = null;
+  private meteorTimeouts: number[] = [];
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true);
@@ -365,7 +368,7 @@ export class PlanetScene {
 
   private createMeteorSystem(): void {
     // Create meteors that randomly appear and fly across the scene
-    setInterval(() => {
+    this.meteorInterval = window.setInterval(() => {
       this.spawnMeteor();
     }, 3000); // Spawn a meteor every 3 seconds
   }
@@ -459,7 +462,7 @@ export class PlanetScene {
     this.scene.beginAnimation(meteor, 0, 60, false, 1, () => {
       // Cleanup after animation
       trail.stop();
-      setTimeout(() => {
+      const timeoutId = window.setTimeout(() => {
         meteor.dispose();
         trail.dispose();
         const index = this.meteorParticleSystems.indexOf(trail);
@@ -467,6 +470,7 @@ export class PlanetScene {
           this.meteorParticleSystems.splice(index, 1);
         }
       }, 2000);
+      this.meteorTimeouts.push(timeoutId);
     });
   }
 
@@ -543,8 +547,11 @@ export class PlanetScene {
     
     planet.material = material;
 
+    // Store actual radius for later use
+    data.actualRadius = data.size / 2;
+
     // Add planet-specific visual effects
-    this.addPlanetSpecificEffects(planet, data.name);
+    this.addPlanetSpecificEffects(planet, data.name, data.actualRadius);
 
     // Store orbital parameters in the data map (will be used by unified animation loop)
     data.orbitRadius = data.orbitRadius || 0;
@@ -768,52 +775,52 @@ export class PlanetScene {
     }
   }
 
-  private addPlanetSpecificEffects(planet: Mesh, planetName: string): void {
+  private addPlanetSpecificEffects(planet: Mesh, planetName: string, radius: number): void {
     switch(planetName) {
       case "Mercury":
         // Hot surface shimmer - no atmosphere
         break;
       case "Venus":
         // Thick atmosphere glow
-        this.addAtmosphereGlow(planet, new Color3(1, 0.8, 0.4), 1.3);
-        this.addCloudParticles(planet, new Color3(0.9, 0.8, 0.5));
+        this.addAtmosphereGlow(planet, new Color3(1, 0.8, 0.4), 1.3, radius);
+        this.addCloudParticles(planet, new Color3(0.9, 0.8, 0.5), radius);
         break;
       case "Earth":
         // Blue atmosphere
-        this.addAtmosphereGlow(planet, new Color3(0.3, 0.5, 1), 1.2);
-        this.addCloudParticles(planet, new Color3(1, 1, 1));
+        this.addAtmosphereGlow(planet, new Color3(0.3, 0.5, 1), 1.2, radius);
+        this.addCloudParticles(planet, new Color3(1, 1, 1), radius);
         break;
       case "Mars":
         // Thin reddish atmosphere with dust
-        this.addAtmosphereGlow(planet, new Color3(0.8, 0.4, 0.3), 1.15);
-        this.addDustParticles(planet);
+        this.addAtmosphereGlow(planet, new Color3(0.8, 0.4, 0.3), 1.15, radius);
+        this.addDustParticles(planet, radius);
         break;
       case "Jupiter":
         // Gas giant with storm particles
-        this.addAtmosphereGlow(planet, new Color3(0.9, 0.7, 0.4), 1.25);
-        this.addStormParticles(planet);
+        this.addAtmosphereGlow(planet, new Color3(0.9, 0.7, 0.4), 1.25, radius);
+        this.addStormParticles(planet, radius);
         break;
       case "Saturn":
         // Rings!
-        this.addRings(planet);
-        this.addAtmosphereGlow(planet, new Color3(0.95, 0.8, 0.6), 1.2);
+        this.addRings(planet, radius);
+        this.addAtmosphereGlow(planet, new Color3(0.95, 0.8, 0.6), 1.2, radius);
         break;
       case "Uranus":
         // Icy blue glow
-        this.addAtmosphereGlow(planet, new Color3(0.4, 0.7, 0.9), 1.18);
+        this.addAtmosphereGlow(planet, new Color3(0.4, 0.7, 0.9), 1.18, radius);
         break;
       case "Neptune":
         // Deep blue with active atmosphere
-        this.addAtmosphereGlow(planet, new Color3(0.2, 0.5, 1), 1.2);
-        this.addStormParticles(planet);
+        this.addAtmosphereGlow(planet, new Color3(0.2, 0.5, 1), 1.2, radius);
+        this.addStormParticles(planet, radius);
         break;
     }
   }
 
-  private addAtmosphereGlow(planet: Mesh, color: Color3, scale: number): void {
+  private addAtmosphereGlow(planet: Mesh, color: Color3, scale: number, radius: number): void {
     const atmosphere = MeshBuilder.CreateSphere(
       `atmo_${planet.name}`,
-      { diameter: planet.scaling.x * scale, segments: 32 },
+      { diameter: radius * 2 * scale, segments: 32 },
       this.scene
     );
     atmosphere.parent = planet;
@@ -831,11 +838,11 @@ export class PlanetScene {
     }
   }
 
-  private addCloudParticles(planet: Mesh, color: Color3): void {
+  private addCloudParticles(planet: Mesh, color: Color3, radius: number): void {
     const clouds = new ParticleSystem(`clouds_${planet.name}`, 100, this.scene);
     clouds.emitter = planet;
     
-    const sphereEmitter = new SphereParticleEmitter(planet.scaling.x * 0.55);
+    const sphereEmitter = new SphereParticleEmitter(radius * 0.55);
     clouds.particleEmitterType = sphereEmitter;
     
     // Cloud texture
@@ -867,11 +874,11 @@ export class PlanetScene {
     clouds.start();
   }
 
-  private addDustParticles(planet: Mesh): void {
+  private addDustParticles(planet: Mesh, radius: number): void {
     const dust = new ParticleSystem(`dust_${planet.name}`, 80, this.scene);
     dust.emitter = planet;
     
-    const sphereEmitter = new SphereParticleEmitter(planet.scaling.x * 0.55);
+    const sphereEmitter = new SphereParticleEmitter(radius * 0.55);
     dust.particleEmitterType = sphereEmitter;
     
     // Dust texture
@@ -899,11 +906,11 @@ export class PlanetScene {
     dust.start();
   }
 
-  private addStormParticles(planet: Mesh): void {
+  private addStormParticles(planet: Mesh, radius: number): void {
     const storm = new ParticleSystem(`storm_${planet.name}`, 50, this.scene);
     storm.emitter = planet;
     
-    const sphereEmitter = new SphereParticleEmitter(planet.scaling.x * 0.52);
+    const sphereEmitter = new SphereParticleEmitter(radius * 0.52);
     storm.particleEmitterType = sphereEmitter;
     
     // Storm texture
@@ -935,12 +942,12 @@ export class PlanetScene {
     storm.start();
   }
 
-  private addRings(planet: Mesh): void {
+  private addRings(planet: Mesh, radius: number): void {
     // Create Saturn's rings
     const ring = MeshBuilder.CreateTorus(
       `ring_${planet.name}`,
       {
-        diameter: planet.scaling.x * 3,
+        diameter: radius * 2 * 3,
         thickness: 0.3,
         tessellation: 128
       },
@@ -1156,6 +1163,23 @@ export class PlanetScene {
   }
 
   public dispose(): void {
+    // Clear meteor spawning interval
+    if (this.meteorInterval !== null) {
+      clearInterval(this.meteorInterval);
+      this.meteorInterval = null;
+    }
+    
+    // Clear all pending meteor timeouts
+    this.meteorTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    this.meteorTimeouts = [];
+    
+    // Stop and dispose meteor particle systems
+    this.meteorParticleSystems.forEach(system => {
+      system.stop();
+      system.dispose();
+    });
+    this.meteorParticleSystems = [];
+    
     // Unsubscribe from all Firebase subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
     this.subscriptions = [];
