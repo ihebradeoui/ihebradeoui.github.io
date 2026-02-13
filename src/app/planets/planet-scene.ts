@@ -40,6 +40,14 @@ export interface PlanetData {
   orbitSpeed?: number;
   orbitAngle?: number;
   actualRadius?: number; // Store actual radius for particle emitters
+  orbitInclination?: number; // Inclination angle for varied orbital planes
+}
+
+export enum CameraPreset {
+  SPAWN_POINT = 'spawn',
+  OVERVIEW = 'overview',
+  FOLLOW_SUN = 'sun',
+  FOLLOW_PLANET = 'planet'
 }
 
 export class PlanetScene {
@@ -56,6 +64,9 @@ export class PlanetScene {
   private meteorParticleSystems: ParticleSystem[] = [];
   private meteorInterval: number | null = null;
   private meteorTimeouts: number[] = [];
+  private currentPreset: CameraPreset = CameraPreset.SPAWN_POINT;
+  private followingPlanet: Mesh | null = null;
+  private cameraPresetUI: HTMLDivElement | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -80,6 +91,10 @@ export class PlanetScene {
     
     // Setup modal interaction
     this.setupModalInteraction();
+    
+    // Setup keyboard controls and camera presets
+    this.setupKeyboardControls();
+    this.setupCameraPresetUI();
   }
 
   private createScene(): Scene {
@@ -98,7 +113,8 @@ export class PlanetScene {
       Vector3.Zero(),
       scene
     );
-    this.camera.attachControl(this.canvas, true);
+    // Initially detach controls for preset-based system
+    this.camera.attachControl(this.canvas, false);
     this.camera.lowerRadiusLimit = 20;
     this.camera.upperRadiusLimit = 300;
     this.camera.wheelPrecision = 20;
@@ -172,15 +188,21 @@ export class PlanetScene {
           // Update orbit angle
           data.orbitAngle += data.orbitSpeed;
           
-          // Calculate new position
+          // Calculate new position with inclination
+          const inclination = data.orbitInclination || 0;
           planet.position.x = Math.cos(data.orbitAngle) * data.orbitRadius;
           planet.position.z = Math.sin(data.orbitAngle) * data.orbitRadius;
-          planet.position.y = 0;
+          planet.position.y = Math.sin(data.orbitAngle) * data.orbitRadius * Math.sin(inclination);
           
           // Planet self-rotation - slower for cozy vibe
           planet.rotation.y += 0.002; // Reduced from 0.01 for gentler rotation
         }
       });
+      
+      // Handle camera following for FOLLOW_PLANET preset
+      if (this.currentPreset === CameraPreset.FOLLOW_PLANET && this.followingPlanet) {
+        this.camera.setTarget(this.followingPlanet.position);
+      }
     });
   }
 
@@ -464,15 +486,16 @@ export class PlanetScene {
 
   private createInitialPlanets(): void {
     // Create planets with orbital parameters (slower speeds for cozy vibe)
+    // Each planet has a different orbital inclination for varied planes
     const initialPlanets = [
-      { orbitRadius: 15, color: "#8B7355", size: 1.8, speed: 0.002, name: "Mercury" },
-      { orbitRadius: 22, color: "#FFA54F", size: 2.3, speed: 0.0016, name: "Venus" },
-      { orbitRadius: 30, color: "#4169E1", size: 2.5, speed: 0.0013, name: "Earth" },
-      { orbitRadius: 38, color: "#CD5C5C", size: 2.0, speed: 0.0010, name: "Mars" },
-      { orbitRadius: 55, color: "#DAA520", size: 4.5, speed: 0.0007, name: "Jupiter" },
-      { orbitRadius: 70, color: "#F4A460", size: 4.0, speed: 0.0005, name: "Saturn" },
-      { orbitRadius: 85, color: "#4682B4", size: 3.2, speed: 0.0004, name: "Uranus" },
-      { orbitRadius: 100, color: "#1E90FF", size: 3.0, speed: 0.0003, name: "Neptune" },
+      { orbitRadius: 15, color: "#E8B4A0", size: 1.8, speed: 0.002, name: "Mercury", inclination: 0.12 },
+      { orbitRadius: 22, color: "#FFB84D", size: 2.3, speed: 0.0016, name: "Venus", inclination: 0.06 },
+      { orbitRadius: 30, color: "#4A9EFF", size: 2.5, speed: 0.0013, name: "Earth", inclination: 0 },
+      { orbitRadius: 38, color: "#FF6B4D", size: 2.0, speed: 0.0010, name: "Mars", inclination: 0.03 },
+      { orbitRadius: 55, color: "#FFD700", size: 4.5, speed: 0.0007, name: "Jupiter", inclination: 0.02 },
+      { orbitRadius: 70, color: "#FFE4B5", size: 4.0, speed: 0.0005, name: "Saturn", inclination: 0.04 },
+      { orbitRadius: 85, color: "#87CEEB", size: 3.2, speed: 0.0004, name: "Uranus", inclination: 0.013 },
+      { orbitRadius: 100, color: "#4169FF", size: 3.0, speed: 0.0003, name: "Neptune", inclination: 0.03 },
     ];
 
     initialPlanets.forEach((data, index) => {
@@ -485,14 +508,15 @@ export class PlanetScene {
         description: 'Click to edit',
         position: { 
           x: Math.cos(startAngle) * data.orbitRadius, 
-          y: 0, 
+          y: Math.sin(startAngle) * data.orbitRadius * Math.sin(data.inclination), 
           z: Math.sin(startAngle) * data.orbitRadius 
         },
         color: data.color,
         size: data.size,
         orbitRadius: data.orbitRadius,
         orbitSpeed: data.speed,
-        orbitAngle: startAngle
+        orbitAngle: startAngle,
+        orbitInclination: data.inclination
       });
     });
   }
@@ -516,7 +540,7 @@ export class PlanetScene {
     const planetTexture = this.createPlanetTexture(data.name, data.color);
     material.albedoTexture = planetTexture;
     
-    // Base color
+    // Base color - enhanced vibrance
     material.albedoColor = Color3.FromHexString(data.color);
     
     // Enhanced metallic and roughness for photorealistic surface
@@ -528,8 +552,8 @@ export class PlanetScene {
     material.bumpTexture = bumpTexture;
     material.bumpTexture.level = 1.5; // More pronounced surface detail
     
-    // Subtle emissive for visibility
-    material.emissiveColor = Color3.FromHexString(data.color).scale(0.015);
+    // Enhanced emissive for stronger glow effect
+    material.emissiveColor = Color3.FromHexString(data.color).scale(0.08);
     
     // Enhanced specular highlights from sun for glossy appearance
     material.specularIntensity = 0.6;
@@ -538,6 +562,11 @@ export class PlanetScene {
     material.directIntensity = 1.2;
     material.environmentIntensity = 0.4;
     material.microSurface = 0.85;
+    
+    // Ensure planet is fully opaque - no transparency
+    material.alpha = 1.0;
+    material.alphaMode = Engine.ALPHA_DISABLE;
+    material.transparencyMode = null;
     
     // Enable subsurface scattering for certain planet types
     if (data.name === "Earth" || data.name === "Mars") {
@@ -557,27 +586,11 @@ export class PlanetScene {
     data.orbitRadius = data.orbitRadius || 0;
     data.orbitSpeed = data.orbitSpeed || 0;
     data.orbitAngle = data.orbitAngle || 0;
+    data.orbitInclination = data.orbitInclination || 0;
 
-    // Create orbital path visualization (subtle ring) - horizontal plane to match planet movement
+    // Create orbital path visualization with inclination
     if (data.orbitRadius > 0) {
-      const orbitPath = MeshBuilder.CreateTorus(
-        `orbit_${id}`,
-        { 
-          diameter: data.orbitRadius * 2, 
-          thickness: 0.05, 
-          tessellation: 128 // Increased from 64 for smoother appearance
-        },
-        this.scene
-      );
-      orbitPath.position = Vector3.Zero();
-      // No rotation - torus is already horizontal by default, matching XZ plane movement
-      
-      const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
-      orbitMaterial.emissiveColor = new Color3(0.08, 0.08, 0.12);
-      orbitMaterial.alpha = 0.15; // Slightly more subtle
-      orbitMaterial.wireframe = false;
-      orbitPath.material = orbitMaterial;
-      orbitPath.isPickable = false; // Don't interfere with planet picking
+      this.createInclinedOrbitPath(id, data.orbitRadius, data.orbitInclination || 0);
     }
 
     // Note: Orbital motion and rotation handled in unified animation loop
@@ -844,8 +857,9 @@ export class PlanetScene {
     
     const atmoMat = new StandardMaterial(`atmoMat_${planet.name}`, this.scene);
     atmoMat.diffuseColor = new Color3(0, 0, 0);
-    atmoMat.emissiveColor = color.scale(0.3);
-    atmoMat.alpha = 0.2;
+    // Enhanced emissive for stronger glow
+    atmoMat.emissiveColor = color.scale(0.6);
+    atmoMat.alpha = 0.3;
     atmoMat.backFaceCulling = false;
     atmosphere.material = atmoMat;
     
@@ -1180,6 +1194,231 @@ export class PlanetScene {
     this.subscriptions.push(sub);
   }
 
+  private createInclinedOrbitPath(id: string, orbitRadius: number, inclination: number): void {
+    // Create a torus for the orbit path
+    const orbitPath = MeshBuilder.CreateTorus(
+      `orbit_${id}`,
+      { 
+        diameter: orbitRadius * 2, 
+        thickness: 0.05, 
+        tessellation: 128
+      },
+      this.scene
+    );
+    orbitPath.position = Vector3.Zero();
+    
+    // Rotate the orbit path based on inclination
+    orbitPath.rotation.x = inclination;
+    
+    const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
+    orbitMaterial.emissiveColor = new Color3(0.08, 0.08, 0.12);
+    orbitMaterial.alpha = 0.15;
+    orbitMaterial.wireframe = false;
+    orbitPath.material = orbitMaterial;
+    orbitPath.isPickable = false;
+  }
+
+  private setupKeyboardControls(): void {
+    window.addEventListener('keydown', (event) => {
+      switch(event.key) {
+        case '1':
+          this.setCameraPreset(CameraPreset.SPAWN_POINT);
+          break;
+        case '2':
+          this.setCameraPreset(CameraPreset.OVERVIEW);
+          break;
+        case '3':
+          this.setCameraPreset(CameraPreset.FOLLOW_SUN);
+          break;
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+          // Follow specific planet (4-9 for planets 0-5)
+          const planetIndex = parseInt(event.key) - 4;
+          const planetId = `planet_${planetIndex}`;
+          const planet = this.planets.get(planetId);
+          if (planet) {
+            this.followPlanet(planet);
+          }
+          break;
+        case 'ArrowUp':
+          // Zoom in
+          this.camera.radius = Math.max(this.camera.lowerRadiusLimit, this.camera.radius - 5);
+          break;
+        case 'ArrowDown':
+          // Zoom out
+          this.camera.radius = Math.min(this.camera.upperRadiusLimit, this.camera.radius + 5);
+          break;
+        case 'ArrowLeft':
+          // Rotate left
+          this.camera.alpha -= 0.1;
+          break;
+        case 'ArrowRight':
+          // Rotate right
+          this.camera.alpha += 0.1;
+          break;
+        case 'm':
+        case 'M':
+          // Toggle manual camera control
+          this.toggleManualControl();
+          break;
+      }
+    });
+  }
+
+  private setupCameraPresetUI(): void {
+    // Create UI overlay
+    const uiDiv = document.createElement('div');
+    uiDiv.style.position = 'absolute';
+    uiDiv.style.top = '20px';
+    uiDiv.style.left = '20px';
+    uiDiv.style.color = 'white';
+    uiDiv.style.fontFamily = 'Arial, sans-serif';
+    uiDiv.style.fontSize = '14px';
+    uiDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    uiDiv.style.padding = '15px';
+    uiDiv.style.borderRadius = '8px';
+    uiDiv.style.zIndex = '1000';
+    (uiDiv.style as any).backdropFilter = 'blur(10px)';
+    uiDiv.innerHTML = `
+      <div style="margin-bottom: 10px; font-weight: bold; font-size: 16px;">Camera Controls</div>
+      <div style="margin-bottom: 5px;"><strong>1:</strong> Spawn Point</div>
+      <div style="margin-bottom: 5px;"><strong>2:</strong> Overview</div>
+      <div style="margin-bottom: 5px;"><strong>3:</strong> Follow Sun</div>
+      <div style="margin-bottom: 5px;"><strong>4-9:</strong> Follow Planet</div>
+      <div style="margin-bottom: 5px;"><strong>Arrow Keys:</strong> Manual Control</div>
+      <div style="margin-bottom: 5px;"><strong>M:</strong> Toggle Mouse Control</div>
+      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3);">
+        <strong>Current:</strong> <span id="currentPreset">Spawn Point</span>
+      </div>
+    `;
+    
+    document.body.appendChild(uiDiv);
+    this.cameraPresetUI = uiDiv;
+  }
+
+  private setCameraPreset(preset: CameraPreset): void {
+    this.currentPreset = preset;
+    this.followingPlanet = null;
+    
+    // Animate camera to preset position
+    const targetPosition = this.getPresetCameraPosition(preset);
+    const targetTarget = this.getPresetCameraTarget(preset);
+    
+    this.animateCamera(targetPosition, targetTarget);
+    this.updatePresetUI(this.getPresetName(preset));
+  }
+
+  private followPlanet(planet: Mesh): void {
+    this.currentPreset = CameraPreset.FOLLOW_PLANET;
+    this.followingPlanet = planet;
+    
+    // Position camera relative to planet
+    const planetData = Array.from(this.planetDataMap.entries()).find(([id, _]) => this.planets.get(id) === planet);
+    const planetName = planetData ? planetData[1].name : 'Unknown';
+    
+    const offset = new Vector3(10, 10, 10);
+    const targetPosition = planet.position.add(offset);
+    
+    this.animateCamera(targetPosition, planet.position);
+    this.updatePresetUI(`Follow ${planetName}`);
+  }
+
+  private getPresetCameraPosition(preset: CameraPreset): Vector3 {
+    switch(preset) {
+      case CameraPreset.SPAWN_POINT:
+        return new Vector3(80, 40, 80);
+      case CameraPreset.OVERVIEW:
+        return new Vector3(0, 150, 0);
+      case CameraPreset.FOLLOW_SUN:
+        return new Vector3(20, 10, 20);
+      default:
+        return new Vector3(80, 40, 80);
+    }
+  }
+
+  private getPresetCameraTarget(preset: CameraPreset): Vector3 {
+    switch(preset) {
+      case CameraPreset.SPAWN_POINT:
+      case CameraPreset.OVERVIEW:
+      case CameraPreset.FOLLOW_SUN:
+        return Vector3.Zero();
+      default:
+        return Vector3.Zero();
+    }
+  }
+
+  private animateCamera(targetPosition: Vector3, targetTarget: Vector3): void {
+    // Calculate spherical coordinates from targetPosition relative to targetTarget
+    const direction = targetPosition.subtract(targetTarget);
+    const radius = direction.length();
+    const alpha = Math.atan2(direction.x, direction.z);
+    const beta = Math.acos(direction.y / radius);
+    
+    // Smoothly animate to target
+    const frameCount = 60;
+    const startAlpha = this.camera.alpha;
+    const startBeta = this.camera.beta;
+    const startRadius = this.camera.radius;
+    const startTarget = this.camera.target.clone();
+    
+    let frame = 0;
+    const animationObserver = this.scene.onBeforeRenderObservable.add(() => {
+      frame++;
+      const t = frame / frameCount;
+      const eased = this.easeInOutCubic(t);
+      
+      this.camera.alpha = startAlpha + (alpha - startAlpha) * eased;
+      this.camera.beta = startBeta + (beta - startBeta) * eased;
+      this.camera.radius = startRadius + (radius - startRadius) * eased;
+      this.camera.target = Vector3.Lerp(startTarget, targetTarget, eased);
+      
+      if (frame >= frameCount) {
+        this.scene.onBeforeRenderObservable.remove(animationObserver);
+      }
+    });
+  }
+
+  private easeInOutCubic(t: number): number {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  private getPresetName(preset: CameraPreset): string {
+    switch(preset) {
+      case CameraPreset.SPAWN_POINT:
+        return 'Spawn Point';
+      case CameraPreset.OVERVIEW:
+        return 'Overview';
+      case CameraPreset.FOLLOW_SUN:
+        return 'Follow Sun';
+      case CameraPreset.FOLLOW_PLANET:
+        return 'Follow Planet';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  private updatePresetUI(presetName: string): void {
+    const presetElement = document.getElementById('currentPreset');
+    if (presetElement) {
+      presetElement.textContent = presetName;
+    }
+  }
+
+  private toggleManualControl(): void {
+    if (this.camera.inputs.attached['pointers']) {
+      this.camera.detachControl();
+      this.updatePresetUI('Manual (Keyboard)');
+    } else {
+      this.camera.attachControl(this.canvas, false);
+      this.updatePresetUI('Manual (Mouse)');
+    }
+  }
+
+
   public dispose(): void {
     // Clear meteor spawning interval
     if (this.meteorInterval !== null) {
@@ -1197,6 +1436,12 @@ export class PlanetScene {
       system.dispose();
     });
     this.meteorParticleSystems = [];
+    
+    // Remove camera preset UI
+    if (this.cameraPresetUI && this.cameraPresetUI.parentNode) {
+      this.cameraPresetUI.parentNode.removeChild(this.cameraPresetUI);
+      this.cameraPresetUI = null;
+    }
     
     // Unsubscribe from all Firebase subscriptions
     this.subscriptions.forEach(sub => sub.unsubscribe());
