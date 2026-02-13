@@ -3,6 +3,7 @@
   height: 100vh;
   position: relative;
   overflow: hidden;
+  background-color: #000000; /* Black background for space theme */
 }
 
 #planetsCanvas {
@@ -10,6 +11,7 @@
   height: 100%;
   display: block;
   touch-action: none;
+  background-color: #000000; /* Ensure canvas background is black */
 }
 
 .modal {
