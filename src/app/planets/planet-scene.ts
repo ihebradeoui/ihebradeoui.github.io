@@ -119,9 +119,13 @@ export class PlanetScene {
   // Discovery and achievements system
   private achievements: Achievement[] = [];
   private discoveryRadius: number = 15; // Distance within which planets are discovered
-  private showTutorial: boolean = !localStorage.getItem('planetsAppTutorialCompleted');
+  private showTutorial: boolean = localStorage.getItem('planetsAppTutorialCompleted') === null;
   private tutorialStep: number = 0;
   private tutorialOverlay: HTMLDivElement | null = null;
+  
+  // Constants
+  private readonly DEFAULT_PLANET_SIZE: number = 1;
+  private readonly TOUR_INTERVAL_MS: number = 5000;
   
   // Performance monitoring
   private fpsCounter: HTMLDivElement | null = null;
@@ -129,6 +133,7 @@ export class PlanetScene {
   private lastFrameTime: number = performance.now();
   private frameCount: number = 0;
   private fps: number = 60;
+  private lastPerformanceModeChange: number = 0; // Timestamp of last mode change
   
   // Info cards and UI
   private infoCard: HTMLDivElement | null = null;
@@ -2756,7 +2761,7 @@ export class PlanetScene {
         const distance = Vector3.Distance(cameraPos, planet.position);
         
         // Discover planet if camera is within discovery radius
-        if (distance < this.discoveryRadius + (data.size || 1)) {
+        if (distance < this.discoveryRadius + (data.size || this.DEFAULT_PLANET_SIZE)) {
           this.discoverPlanet(id, planet, data);
         }
       }
@@ -2930,18 +2935,30 @@ export class PlanetScene {
       }
       
       // Auto-adjust quality if in auto mode
-      if (this.performanceMode === 'auto') {
+      // Add delay between mode changes to prevent thrashing (5 seconds minimum)
+      const now = Date.now();
+      if (this.performanceMode === 'auto' && (now - this.lastPerformanceModeChange) > 5000) {
         if (this.fps < 30) {
-          this.setPerformanceMode('low');
+          this.setPerformanceMode('low', true);
         } else if (this.fps > 55) {
-          this.setPerformanceMode('high');
+          this.setPerformanceMode('high', true);
         }
       }
     }
   }
 
-  private setPerformanceMode(mode: 'low' | 'medium' | 'high' | 'auto'): void {
+  private setPerformanceMode(mode: 'low' | 'medium' | 'high' | 'auto', isAutoAdjust: boolean = false): void {
+    // Prevent changing to same mode
+    if (this.performanceMode === mode && mode !== 'auto') {
+      return;
+    }
+    
     this.performanceMode = mode;
+    
+    // Track when mode was changed for auto-adjustment throttling
+    if (isAutoAdjust) {
+      this.lastPerformanceModeChange = Date.now();
+    }
     
     let particleMultiplier = 1.0;
     let glowIntensity = 0.8;
@@ -3006,17 +3023,22 @@ export class PlanetScene {
       const visitCount = data.visitCount || 0;
       const shape = data.shape || 'sphere';
       
+      // Escape HTML to prevent XSS
+      const escapedName = this.escapeHtml(data.name);
+      const escapedDescription = this.escapeHtml(data.description);
+      const escapedShape = this.escapeHtml(shape);
+      
       this.infoCard.innerHTML = `
         <div class="info-card-header">
-          <h3>${data.name}</h3>
+          <h3>${escapedName}</h3>
           <span class="discovery-badge">${discovered}</span>
         </div>
         <div class="info-card-body">
-          <p>${data.description}</p>
+          <p>${escapedDescription}</p>
           <div class="info-stats">
             <div class="stat">
               <span class="stat-label">Type:</span>
-              <span class="stat-value">${shape}</span>
+              <span class="stat-value">${escapedShape}</span>
             </div>
             <div class="stat">
               <span class="stat-label">Size:</span>
@@ -3029,12 +3051,30 @@ export class PlanetScene {
           </div>
         </div>
         <div class="info-card-footer">
-          <button class="info-btn" onclick="navigator.clipboard.writeText('Check out ${data.name} in the Planets App!')">📋 Share</button>
+          <button class="info-btn" id="shareBtn">📋 Share</button>
         </div>
       `;
       
       this.infoCard.style.display = 'block';
+      
+      // Add event listener for share button
+      const shareBtn = document.getElementById('shareBtn');
+      if (shareBtn) {
+        shareBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(`Check out ${data.name} in the Planets App!`).then(() => {
+            this.showNotification('📋 Copied to clipboard!', 'success');
+          }).catch(() => {
+            this.showNotification('Failed to copy', 'error');
+          });
+        });
+      }
     }
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   private hideInfoCard(): void {
@@ -3159,9 +3199,9 @@ export class PlanetScene {
       }
     };
     
-    // Tour each planet for 5 seconds
+    // Tour each planet for configured interval
     tourNextPlanet();
-    this.tourInterval = window.setInterval(tourNextPlanet, 5000);
+    this.tourInterval = window.setInterval(tourNextPlanet, this.TOUR_INTERVAL_MS);
     
     this.showTourControls();
   }
@@ -3182,11 +3222,15 @@ export class PlanetScene {
     controls.className = 'tour-controls';
     controls.innerHTML = `
       <div class="tour-info">🎬 Auto Tour Active</div>
-      <button class="tour-btn" onclick="document.dispatchEvent(new Event('stopTour'))">Stop Tour</button>
+      <button class="tour-btn" id="stopTourBtn">Stop Tour</button>
     `;
     document.body.appendChild(controls);
     
-    document.addEventListener('stopTour', () => this.stopTour(), { once: true });
+    // Add event listener instead of inline onclick
+    const stopBtn = document.getElementById('stopTourBtn');
+    if (stopBtn) {
+      stopBtn.addEventListener('click', () => this.stopTour());
+    }
   }
 
   private hideTourControls(): void {
@@ -3390,11 +3434,14 @@ export class PlanetScene {
       this.searchPanel.style.display = 'block';
       setTimeout(() => this.searchPanel?.classList.add('show'), 10);
       
-      // Focus search input
-      const searchInput = document.getElementById('searchInput') as HTMLInputElement;
-      if (searchInput) {
-        searchInput.focus();
-      }
+      // Focus search input only if not invoked by screen reader navigation
+      // Delay to ensure proper tab order
+      setTimeout(() => {
+        const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+        if (searchInput && document.activeElement === document.body) {
+          searchInput.focus();
+        }
+      }, 100);
     }
   }
 
