@@ -22,7 +22,9 @@ import {
   NoiseProceduralTexture,
   Animation,
   SphereParticleEmitter,
-  AbstractMesh
+  AbstractMesh,
+  PointerEventTypes,
+  PBRSubSurfaceConfiguration
 } from "@babylonjs/core";
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Subscription } from 'rxjs';
@@ -141,7 +143,7 @@ export class PlanetScene {
     
     // Setup pointer observable for debugging and enhanced picking
     scene.onPointerObservable.add((pointerInfo) => {
-      if (pointerInfo.type === 1) { // POINTERDOWN
+      if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
         console.log('Pointer down on canvas');
         const pickResult = scene.pick(scene.pointerX, scene.pointerY);
         if (pickResult?.hit && pickResult.pickedMesh) {
@@ -672,7 +674,7 @@ export class PlanetScene {
     // Also add a hover effect to show the planet is interactive
     planet.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnPointerOverTrigger, () => {
-        planet.scaling.scaleInPlace(1.05);
+        planet.scaling = new Vector3(1.05, 1.05, 1.05);
       })
     );
     
