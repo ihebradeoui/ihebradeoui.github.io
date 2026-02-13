@@ -1408,12 +1408,27 @@ export class PlanetScene {
     );
     texture.hasAlpha = true;
 
-    // Draw text with semi-transparent background
+    // Draw text with semi-transparent background and rounded corners
     const ctx = texture.getContext() as CanvasRenderingContext2D;
     
-    // Background with no border
+    // Draw rounded rectangle background
+    const x = 0, y = 0, width = 512, height = 128;
+    const radius = 20; // Rounded corner radius
+    
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    
     ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-    ctx.fillRect(0, 0, 512, 128);
+    ctx.fill();
     
     // Draw text centered
     ctx.font = 'bold 48px Arial';
@@ -1536,6 +1551,9 @@ export class PlanetScene {
 
         // Update the label
         this.updatePlanetLabel(planet, nameInput.value);
+        
+        // Play success sound
+        this.playSound('save');
 
         // Close modal
         if (modal) modal.style.display = 'none';
@@ -1898,13 +1916,18 @@ export class PlanetScene {
     uiDiv.style.padding = '15px';
     uiDiv.style.borderRadius = '8px';
     uiDiv.style.zIndex = '1000';
+    uiDiv.style.cursor = 'pointer';
+    uiDiv.style.transition = 'opacity 0.3s ease';
+    uiDiv.title = 'Click to hide/show';
+    
     // Apply backdrop filter with browser compatibility check
     if ('backdropFilter' in uiDiv.style || 'webkitBackdropFilter' in uiDiv.style) {
       (uiDiv.style as any).backdropFilter = 'blur(10px)';
       (uiDiv.style as any).webkitBackdropFilter = 'blur(10px)';
     }
+    
     uiDiv.innerHTML = `
-      <div style="margin-bottom: 10px; font-weight: bold; font-size: 16px;">Camera Controls</div>
+      <div style="margin-bottom: 10px; font-weight: bold; font-size: 16px;">Camera Controls 🎮</div>
       <div style="margin-bottom: 5px;"><strong>1:</strong> Spawn Point</div>
       <div style="margin-bottom: 5px;"><strong>2:</strong> Overview</div>
       <div style="margin-bottom: 5px;"><strong>3:</strong> Follow Sun</div>
@@ -1921,6 +1944,19 @@ export class PlanetScene {
         <strong>Galaxy:</strong> <span id="currentGalaxy">Solar System</span>
       </div>
     `;
+    
+    // Add click handler to hide/show panel
+    let isVisible = true;
+    uiDiv.addEventListener('click', () => {
+      isVisible = !isVisible;
+      if (isVisible) {
+        uiDiv.style.opacity = '1';
+        uiDiv.style.pointerEvents = 'auto';
+      } else {
+        uiDiv.style.opacity = '0';
+        uiDiv.style.pointerEvents = 'none';
+      }
+    });
     
     document.body.appendChild(uiDiv);
     this.cameraPresetUI = uiDiv;
@@ -2250,30 +2286,131 @@ export class PlanetScene {
   }
 
   private createSoundEffects(): void {
-    // Create placeholder sound effects
-    // In production, these would be actual audio files
-    const soundNames = ['click', 'hover', 'galaxy-switch', 'camera-change', 'modal-open', 'modal-close'];
-    
-    soundNames.forEach(name => {
-      const audio = new Audio();
-      // Placeholder - in production you'd set: audio.src = `assets/audio/${name}.mp3`;
-      audio.volume = 0.5;
-      this.sounds.set(name, audio);
-    });
+    // Generate cute sounds using Web Audio API
+    // No need for external audio files
+    console.log('Sound effects system initialized with synthesized sounds');
   }
 
   private playSound(soundName: string): void {
-    if (!this.isSoundEnabled) return;
+    if (!this.isSoundEnabled || !this.audioContext) return;
     
-    const sound = this.sounds.get(soundName);
-    if (sound) {
-      // Reset and play existing audio element instead of cloning
-      sound.currentTime = 0;
-      sound.play().catch(err => {
-        // Silently fail if sound can't play
-        console.debug(`Could not play sound ${soundName}:`, err);
-      });
+    try {
+      // Create cute synthesized sounds using Web Audio API
+      const now = this.audioContext.currentTime;
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      
+      // Different sounds for different actions
+      switch(soundName) {
+        case 'click':
+          // Planet click - cute ascending chirp
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(600, now);
+          oscillator.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+          gainNode.gain.setValueAtTime(0.3, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+          oscillator.start(now);
+          oscillator.stop(now + 0.15);
+          break;
+          
+        case 'hover':
+          // Hover - soft pop
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(800, now);
+          gainNode.gain.setValueAtTime(0.15, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+          oscillator.start(now);
+          oscillator.stop(now + 0.08);
+          break;
+          
+        case 'galaxy-switch':
+          // Galaxy switch - magical sparkle
+          oscillator.type = 'triangle';
+          oscillator.frequency.setValueAtTime(523.25, now); // C5
+          oscillator.frequency.exponentialRampToValueAtTime(1046.5, now + 0.2); // C6
+          gainNode.gain.setValueAtTime(0.25, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          oscillator.start(now);
+          oscillator.stop(now + 0.3);
+          break;
+          
+        case 'camera-change':
+          // Camera change - quick beep
+          oscillator.type = 'square';
+          oscillator.frequency.setValueAtTime(440, now);
+          gainNode.gain.setValueAtTime(0.15, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+          oscillator.start(now);
+          oscillator.stop(now + 0.1);
+          break;
+          
+        case 'modal-open':
+          // Modal open - rising arpeggio
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(400, now);
+          oscillator.frequency.setValueAtTime(500, now + 0.05);
+          oscillator.frequency.setValueAtTime(650, now + 0.1);
+          gainNode.gain.setValueAtTime(0.2, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+          oscillator.start(now);
+          oscillator.stop(now + 0.2);
+          break;
+          
+        case 'modal-close':
+          // Modal close - descending tone
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(650, now);
+          oscillator.frequency.exponentialRampToValueAtTime(350, now + 0.15);
+          gainNode.gain.setValueAtTime(0.2, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+          oscillator.start(now);
+          oscillator.stop(now + 0.15);
+          break;
+          
+        case 'save':
+          // Save - success chime (C major chord progression)
+          this.playChord([523.25, 659.25, 783.99], 0.3, 0.2); // C-E-G
+          break;
+          
+        default:
+          // Default - simple beep
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(440, now);
+          gainNode.gain.setValueAtTime(0.15, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+          oscillator.start(now);
+          oscillator.stop(now + 0.1);
+      }
+    } catch (err) {
+      console.debug(`Could not play sound ${soundName}:`, err);
     }
+  }
+
+  private playChord(frequencies: number[], duration: number, volume: number): void {
+    if (!this.audioContext) return;
+    
+    const now = this.audioContext.currentTime;
+    
+    frequencies.forEach((freq, index) => {
+      setTimeout(() => {
+        const oscillator = this.audioContext!.createOscillator();
+        const gainNode = this.audioContext!.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(freq, now);
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext!.destination);
+        
+        gainNode.gain.setValueAtTime(volume, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
+        
+        oscillator.start(now);
+        oscillator.stop(now + duration);
+      }, index * 50); // Slight delay between notes for arpeggio effect
+    });
   }
 
   private addOrbitalTrail(planet: Mesh, color: string, planetId: string): void {
