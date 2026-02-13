@@ -228,6 +228,10 @@ export class PlanetScene {
   private spaceshipSpeed: number = 0.5;
   private fuelConsumptionRate: number = 0.1;
   
+  // Constants for game mechanics
+  private readonly RESOURCE_REGENERATION_DELAY_MS = 60000; // 1 minute
+  private readonly MISSION_CHECK_INTERVAL_MS = 5000; // 5 seconds
+  
   // Resource system
   private playerResources: Map<ResourceType, number> = new Map([
     [ResourceType.CRYSTAL, 0],
@@ -245,6 +249,7 @@ export class PlanetScene {
   private activeMissions: Mission[] = [];
   private completedMissions: Mission[] = [];
   private missionUI: HTMLDivElement | null = null;
+  private missionCheckInterval: number | null = null; // Store interval for cleanup
   
   // Alien encounters
   private alienEncounters: AlienEncounter[] = [];
@@ -3909,7 +3914,7 @@ export class PlanetScene {
           if (data.resourceAmount <= 0) {
             setTimeout(() => {
               data.resourceAmount = Math.floor(Math.random() * 20) + 10;
-            }, 60000); // Regenerate after 1 minute
+            }, this.RESOURCE_REGENERATION_DELAY_MS);
           }
         }
       }
@@ -4005,11 +4010,16 @@ export class PlanetScene {
       }
     }
     
-    // Update resources
-    document.getElementById('crystalValue')!.textContent = (this.playerResources.get(ResourceType.CRYSTAL) || 0).toString();
-    document.getElementById('mineralValue')!.textContent = (this.playerResources.get(ResourceType.MINERAL) || 0).toString();
-    document.getElementById('energyValue')!.textContent = (this.playerResources.get(ResourceType.ENERGY) || 0).toString();
-    document.getElementById('exoticValue')!.textContent = (this.playerResources.get(ResourceType.EXOTIC) || 0).toString();
+    // Update resources with null checks
+    const crystalEl = document.getElementById('crystalValue');
+    const mineralEl = document.getElementById('mineralValue');
+    const energyEl = document.getElementById('energyValue');
+    const exoticEl = document.getElementById('exoticValue');
+    
+    if (crystalEl) crystalEl.textContent = (this.playerResources.get(ResourceType.CRYSTAL) || 0).toString();
+    if (mineralEl) mineralEl.textContent = (this.playerResources.get(ResourceType.MINERAL) || 0).toString();
+    if (energyEl) energyEl.textContent = (this.playerResources.get(ResourceType.ENERGY) || 0).toString();
+    if (exoticEl) exoticEl.textContent = (this.playerResources.get(ResourceType.EXOTIC) || 0).toString();
   }
 
   private setupMissionSystem(): void {
@@ -4055,8 +4065,8 @@ export class PlanetScene {
       }
     ];
     
-    // Check mission progress periodically
-    setInterval(() => this.checkMissionProgress(), 5000);
+    // Check mission progress periodically and store interval for cleanup
+    this.missionCheckInterval = window.setInterval(() => this.checkMissionProgress(), this.MISSION_CHECK_INTERVAL_MS);
   }
 
   private checkMissionProgress(): void {
@@ -4413,14 +4423,14 @@ export class PlanetScene {
     }
     
     // Save resources
-    const resources: any = {};
+    const resources: Record<ResourceType, number> = {} as Record<ResourceType, number>;
     this.playerResources.forEach((amount, type) => {
       resources[type] = amount;
     });
     localStorage.setItem('playerResources', JSON.stringify(resources));
     
     // Save colonies
-    const colonies: any = {};
+    const colonies: Record<string, ColonyBuilding[]> = {};
     this.colonies.forEach((buildings, planetId) => {
       colonies[planetId] = buildings;
     });
@@ -4481,6 +4491,12 @@ export class PlanetScene {
     if (this.resourceUI && this.resourceUI.parentNode) {
       this.resourceUI.parentNode.removeChild(this.resourceUI);
       this.resourceUI = null;
+    }
+    
+    // Clear mission check interval
+    if (this.missionCheckInterval !== null) {
+      clearInterval(this.missionCheckInterval);
+      this.missionCheckInterval = null;
     }
     
     if (this.missionUI && this.missionUI.parentNode) {
