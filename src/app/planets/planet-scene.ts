@@ -185,6 +185,9 @@ export class PlanetScene {
 
     // Create star field particles
     this.createStarField();
+    
+    // Create nebula effect
+    this.createNebula();
 
     // Load initial galaxy (Solar System)
     this.switchGalaxy(0);
@@ -634,6 +637,11 @@ export class PlanetScene {
 
     // Add planet-specific visual effects
     this.addPlanetSpecificEffects(planet, data.name, data.actualRadius);
+    
+    // Add orbital particle trail for all planets with orbits
+    if (data.orbitRadius && data.orbitRadius > 0) {
+      this.addOrbitalTrail(planet, data.color, id);
+    }
 
     // Store orbital parameters in the data map (will be used by unified animation loop)
     data.orbitRadius = data.orbitRadius || 0;
@@ -858,6 +866,20 @@ export class PlanetScene {
   }
 
   private addPlanetSpecificEffects(planet: Mesh, planetName: string, radius: number): void {
+    // Add enhanced glow for non-sphere shapes
+    const planetData = Array.from(this.planetDataMap.values()).find(p => p.name === planetName);
+    if (planetData?.shape && planetData.shape !== 'sphere') {
+      // Geometric shapes get extra glow
+      if (this.glowLayer) {
+        this.glowLayer.customEmissiveColorSelector = (mesh) => {
+          if (mesh === planet) {
+            return Color3.FromHexString(planetData.color).scale(0.5);
+          }
+          return Color3.Black();
+        };
+      }
+    }
+    
     switch(planetName) {
       case "Mercury":
         // Hot surface shimmer - no atmosphere
@@ -895,6 +917,18 @@ export class PlanetScene {
         // Deep blue with active atmosphere
         this.addAtmosphereGlow(planet, new Color3(0.2, 0.5, 1), 1.2, radius);
         this.addStormParticles(planet, radius);
+        break;
+      default:
+        // For new galaxies' planets, add subtle atmosphere based on their properties
+        if (planetName.includes('Cubix') || planetName.includes('Octara') || planetName.includes('Dodeca') || 
+            planetName.includes('Icosa') || planetName.includes('Cylios')) {
+          // Geometric/tech worlds get energy field effect
+          this.addEnergyField(planet, radius);
+        } else if (planetData) {
+          // Add subtle glow based on planet color
+          const planetColor = Color3.FromHexString(planetData.color);
+          this.addAtmosphereGlow(planet, planetColor, 1.15, radius);
+        }
         break;
     }
   }
@@ -1062,6 +1096,38 @@ export class PlanetScene {
     ringMat.alpha = 0.7;
     ringMat.backFaceCulling = false;
     ring.material = ringMat;
+  }
+
+  private addEnergyField(planet: Mesh, radius: number): void {
+    // Create energy field effect for geometric/tech planets
+    const field = MeshBuilder.CreateSphere(
+      `field_${planet.name}`,
+      { diameter: radius * 2 * 1.4, segments: 16 },
+      this.scene
+    );
+    field.parent = planet;
+    field.position = Vector3.Zero();
+    field.isPickable = false;
+    
+    const fieldMat = new StandardMaterial(`fieldMat_${planet.name}`, this.scene);
+    fieldMat.diffuseColor = new Color3(0, 0, 0);
+    fieldMat.emissiveColor = new Color3(0, 0.8, 1);
+    fieldMat.alpha = 0.15;
+    fieldMat.wireframe = true;
+    fieldMat.backFaceCulling = false;
+    field.material = fieldMat;
+    
+    // Add pulsing animation
+    this.scene.registerBeforeRender(() => {
+      field.scaling.x = 1 + Math.sin(Date.now() * 0.001) * 0.1;
+      field.scaling.y = 1 + Math.sin(Date.now() * 0.001) * 0.1;
+      field.scaling.z = 1 + Math.sin(Date.now() * 0.001) * 0.1;
+      field.rotation.y += 0.01;
+    });
+    
+    if (this.glowLayer) {
+      this.glowLayer.addIncludedOnlyMesh(field);
+    }
   }
 
   private createNameLabel(planet: Mesh, name: string): void {
@@ -1805,6 +1871,78 @@ export class PlanetScene {
         console.debug(`Could not play sound ${soundName}:`, err);
       });
     }
+  }
+
+  private addOrbitalTrail(planet: Mesh, color: string, planetId: string): void {
+    // Create a subtle particle trail that follows the planet
+    const trail = new ParticleSystem(`trail_${planetId}`, 200, this.scene);
+    trail.emitter = planet;
+    
+    // Point emitter at planet position
+    trail.minEmitBox = new Vector3(-0.1, -0.1, -0.1);
+    trail.maxEmitBox = new Vector3(0.1, 0.1, 0.1);
+    
+    // Parse hex color
+    const hexColor = Color3.FromHexString(color);
+    trail.color1 = new Color4(hexColor.r, hexColor.g, hexColor.b, 0.8);
+    trail.color2 = new Color4(hexColor.r, hexColor.g, hexColor.b, 0.4);
+    trail.colorDead = new Color4(hexColor.r, hexColor.g, hexColor.b, 0);
+    
+    // Small particles
+    trail.minSize = 0.08;
+    trail.maxSize = 0.15;
+    
+    // Slow-moving particles that fade quickly
+    trail.minLifeTime = 0.5;
+    trail.maxLifeTime = 1.5;
+    
+    // Emit rate
+    trail.emitRate = 30;
+    
+    // Minimal velocity so particles stay close to orbit path
+    trail.minEmitPower = 0.05;
+    trail.maxEmitPower = 0.1;
+    
+    // Add subtle glow
+    trail.blendMode = ParticleSystem.BLENDMODE_ADD;
+    
+    trail.start();
+  }
+
+  private createNebula(): void {
+    // Add a nebula effect in the background
+    const nebula = new ParticleSystem('nebula', 800, this.scene);
+    
+    // Large emission box to cover space
+    nebula.minEmitBox = new Vector3(-200, -100, -200);
+    nebula.maxEmitBox = new Vector3(200, 100, 200);
+    
+    // Multiple colors for nebula effect
+    nebula.color1 = new Color4(0.4, 0.2, 0.6, 0.15);
+    nebula.color2 = new Color4(0.6, 0.3, 0.8, 0.2);
+    nebula.colorDead = new Color4(0.3, 0.1, 0.5, 0);
+    
+    // Large, slow-moving particles
+    nebula.minSize = 8;
+    nebula.maxSize = 20;
+    
+    nebula.minLifeTime = 15;
+    nebula.maxLifeTime = 30;
+    
+    nebula.emitRate = 10;
+    
+    // Very slow drift
+    nebula.minEmitPower = 0.1;
+    nebula.maxEmitPower = 0.2;
+    
+    // Subtle rotation
+    nebula.minAngularSpeed = -0.05;
+    nebula.maxAngularSpeed = 0.05;
+    
+    // Additive blending for ethereal effect
+    nebula.blendMode = ParticleSystem.BLENDMODE_ADD;
+    
+    nebula.start();
   }
 
   private toggleMusic(): void {
