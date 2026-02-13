@@ -67,6 +67,7 @@ export class PlanetScene {
   private currentPreset: CameraPreset = CameraPreset.SPAWN_POINT;
   private followingPlanet: Mesh | null = null;
   private cameraPresetUI: HTMLDivElement | null = null;
+  private keyboardHandler: ((event: KeyboardEvent) => void) | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -1219,7 +1220,8 @@ export class PlanetScene {
   }
 
   private setupKeyboardControls(): void {
-    window.addEventListener('keydown', (event) => {
+    // Store handler reference for cleanup
+    this.keyboardHandler = (event: KeyboardEvent) => {
       switch(event.key) {
         case '1':
           this.setCameraPreset(CameraPreset.SPAWN_POINT);
@@ -1230,13 +1232,13 @@ export class PlanetScene {
         case '3':
           this.setCameraPreset(CameraPreset.FOLLOW_SUN);
           break;
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-          // Follow specific planet (4-9 for planets 0-5)
+        case '4': // Follow Mercury
+        case '5': // Follow Venus
+        case '6': // Follow Earth
+        case '7': // Follow Mars
+        case '8': // Follow Jupiter
+        case '9': // Follow Saturn
+          // Follow specific planet (4=Mercury, 5=Venus, 6=Earth, 7=Mars, 8=Jupiter, 9=Saturn)
           const planetIndex = parseInt(event.key) - 4;
           const planetId = `planet_${planetIndex}`;
           const planet = this.planets.get(planetId);
@@ -1266,7 +1268,9 @@ export class PlanetScene {
           this.toggleManualControl();
           break;
       }
-    });
+    };
+    
+    window.addEventListener('keydown', this.keyboardHandler);
   }
 
   private setupCameraPresetUI(): void {
@@ -1282,7 +1286,11 @@ export class PlanetScene {
     uiDiv.style.padding = '15px';
     uiDiv.style.borderRadius = '8px';
     uiDiv.style.zIndex = '1000';
-    (uiDiv.style as any).backdropFilter = 'blur(10px)';
+    // Apply backdrop filter with browser compatibility check
+    if ('backdropFilter' in uiDiv.style || 'webkitBackdropFilter' in uiDiv.style) {
+      (uiDiv.style as any).backdropFilter = 'blur(10px)';
+      (uiDiv.style as any).webkitBackdropFilter = 'blur(10px)';
+    }
     uiDiv.innerHTML = `
       <div style="margin-bottom: 10px; font-weight: bold; font-size: 16px;">Camera Controls</div>
       <div style="margin-bottom: 5px;"><strong>1:</strong> Spawn Point</div>
@@ -1409,7 +1417,11 @@ export class PlanetScene {
   }
 
   private toggleManualControl(): void {
-    if (this.camera.inputs.attached['pointers']) {
+    // Check if camera controls are currently attached
+    const isAttached = this.camera.inputs && this.camera.inputs.attached && 
+                       Object.keys(this.camera.inputs.attached).length > 0;
+    
+    if (isAttached) {
       this.camera.detachControl();
       this.updatePresetUI('Manual (Keyboard)');
     } else {
@@ -1436,6 +1448,12 @@ export class PlanetScene {
       system.dispose();
     });
     this.meteorParticleSystems = [];
+    
+    // Remove keyboard event listener
+    if (this.keyboardHandler) {
+      window.removeEventListener('keydown', this.keyboardHandler);
+      this.keyboardHandler = null;
+    }
     
     // Remove camera preset UI
     if (this.cameraPresetUI && this.cameraPresetUI.parentNode) {
