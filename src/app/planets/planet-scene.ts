@@ -56,7 +56,11 @@ export class PlanetScene {
   private meteorTimeouts: number[] = [];
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
-    this.engine = new Engine(this.canvas, true);
+    this.engine = new Engine(this.canvas, true, { 
+      preserveDrawingBuffer: true, 
+      stencil: true,
+      antialias: true // Enable hardware anti-aliasing
+    });
     this.scene = this.createScene();
     
     // Run the render loop
@@ -80,8 +84,8 @@ export class PlanetScene {
     const scene = new Scene(this.engine);
     this.scene = scene; // Assign early so methods can use it
     
-    // Deep space background color
-    scene.clearColor = new Color3(0.01, 0.01, 0.02).toColor4();
+    // Deep black space background color for professional look
+    scene.clearColor = new Color4(0, 0, 0, 1);
 
     // Camera - positioned to view the orbital system
     this.camera = new ArcRotateCamera(
@@ -98,9 +102,12 @@ export class PlanetScene {
     this.camera.wheelPrecision = 20;
     this.camera.panningSensibility = 0;
 
-    // Create glow layer for luminous effects
-    this.glowLayer = new GlowLayer("glow", scene);
-    this.glowLayer.intensity = 0.7;
+    // Create enhanced glow layer for premium luminous effects
+    this.glowLayer = new GlowLayer("glow", scene, {
+      mainTextureFixedSize: 512,
+      blurKernelSize: 64
+    });
+    this.glowLayer.intensity = 0.8;
 
     // Create sun at center
     this.createSun();
@@ -163,10 +170,10 @@ export class PlanetScene {
   }
 
   private createSun(): void {
-    // Create the sun sphere with high detail
+    // Create the sun sphere with ultra high detail for premium quality
     this.sun = MeshBuilder.CreateSphere(
       "sun",
-      { diameter: 8, segments: 64 },
+      { diameter: 8, segments: 128 }, // Increased from 64 to 128
       this.scene
     );
     this.sun.position = Vector3.Zero();
@@ -260,40 +267,80 @@ export class PlanetScene {
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.disableLighting = true;
     
-    // Create a more colorful nebula-like space background
-    const skyTexture = new DynamicTexture("skyTexture", 1024, scene, false);
+    // Create a pure black space background with realistic stars
+    const skyTexture = new DynamicTexture("skyTexture", 2048, scene, false);
     const ctx = skyTexture.getContext();
     
-    // Create gradient background with nebula colors
-    const gradient = ctx.createLinearGradient(0, 0, 1024, 1024);
-    gradient.addColorStop(0, '#0a0e27');
-    gradient.addColorStop(0.3, '#1a1047');
-    gradient.addColorStop(0.6, '#2d1b69');
-    gradient.addColorStop(1, '#0f0820');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 1024, 1024);
+    // Pure black background for deep space
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 2048, 2048);
     
-    // Add some colorful nebula clouds
-    for (let i = 0; i < 15; i++) {
-      const x = Math.random() * 1024;
-      const y = Math.random() * 1024;
-      const size = Math.random() * 200 + 100;
-      const hue = Math.random() * 60 + 220; // Purple to blue range
+    // Add realistic star distribution with varying brightness and sizes
+    // Large bright stars
+    for (let i = 0; i < 200; i++) {
+      const x = Math.random() * 2048;
+      const y = Math.random() * 2048;
+      const brightness = Math.random() * 0.5 + 0.5; // 0.5 to 1.0
+      const size = Math.random() * 2.5 + 1.5;
       
-      const nebulaGradient = ctx.createRadialGradient(x, y, 0, x, y, size);
-      nebulaGradient.addColorStop(0, `hsla(${hue}, 70%, 50%, 0.15)`);
-      nebulaGradient.addColorStop(0.5, `hsla(${hue}, 60%, 40%, 0.08)`);
-      nebulaGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = nebulaGradient;
-      ctx.fillRect(0, 0, 1024, 1024);
+      // Star glow
+      const starGradient = ctx.createRadialGradient(x, y, 0, x, y, size * 2);
+      starGradient.addColorStop(0, `rgba(255, 255, 255, ${brightness})`);
+      starGradient.addColorStop(0.5, `rgba(255, 255, 255, ${brightness * 0.3})`);
+      starGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = starGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Star core
+      ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
     }
     
-    // Add distant bright stars
-    ctx.fillStyle = 'white';
-    for (let i = 0; i < 300; i++) {
-      const x = Math.random() * 1024;
-      const y = Math.random() * 1024;
-      const size = Math.random() * 2 + 0.5;
+    // Medium stars
+    for (let i = 0; i < 500; i++) {
+      const x = Math.random() * 2048;
+      const y = Math.random() * 2048;
+      const brightness = Math.random() * 0.4 + 0.4;
+      const size = Math.random() * 1.5 + 0.8;
+      
+      ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Small distant stars
+    for (let i = 0; i < 1500; i++) {
+      const x = Math.random() * 2048;
+      const y = Math.random() * 2048;
+      const brightness = Math.random() * 0.3 + 0.2;
+      const size = Math.random() * 0.8 + 0.3;
+      
+      ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Add some subtle color variation to a few stars (blue, yellow tint)
+    for (let i = 0; i < 50; i++) {
+      const x = Math.random() * 2048;
+      const y = Math.random() * 2048;
+      const size = Math.random() * 2 + 1;
+      const colorChoice = Math.random();
+      
+      if (colorChoice < 0.5) {
+        // Blue tint
+        ctx.fillStyle = `rgba(200, 220, 255, 0.8)`;
+      } else {
+        // Yellow/warm tint
+        ctx.fillStyle = `rgba(255, 245, 220, 0.8)`;
+      }
+      
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
@@ -301,11 +348,13 @@ export class PlanetScene {
     
     skyTexture.update();
     skyboxMaterial.emissiveTexture = skyTexture;
+    skyboxMaterial.emissiveColor = new Color3(1, 1, 1);
     
-    // Try to use the environment texture if available
+    // Try to use the environment texture if available for reflections
     try {
       const envTex = CubeTexture.CreateFromPrefilteredData("/assets/pbr/environment.env", scene);
       scene.environmentTexture = envTex;
+      scene.environmentIntensity = 0.3; // Subtle environmental lighting
     } catch (e) {
       // Use our custom texture
     }
@@ -510,15 +559,18 @@ export class PlanetScene {
   }
 
   private createPlanet(id: string, data: PlanetData): Mesh {
-    // Create planet sphere with MUCH higher detail for smooth appearance
+    // Create planet sphere with ULTRA HIGH detail for Unreal Engine 5 style appearance
     const planet = MeshBuilder.CreateSphere(
       id,
-      { diameter: data.size, segments: 128 }, // Increased from 32 to 128 for high poly
+      { diameter: data.size, segments: 256 }, // Increased to 256 for ultra high poly look
       this.scene
     );
     planet.position = new Vector3(data.position.x, data.position.y, data.position.z);
+    
+    // Ensure planet is pickable
+    planet.isPickable = true;
 
-    // Enhanced PBR Material for realistic planet appearance
+    // Enhanced PBR Material for ultra-realistic Unreal Engine 5 style appearance
     const material = new PBRMaterial(`mat_${id}`, this.scene);
     
     // Create procedural texture for planet surface
@@ -528,22 +580,31 @@ export class PlanetScene {
     // Base color
     material.albedoColor = Color3.FromHexString(data.color);
     
-    // Metallic and roughness for realistic surface
-    material.metallic = 0.05;
-    material.roughness = 0.9;
+    // Enhanced metallic and roughness for photorealistic surface
+    material.metallic = 0.02;
+    material.roughness = 0.85;
     
     // Add bump map for surface detail
     const bumpTexture = this.createBumpTexture();
     material.bumpTexture = bumpTexture;
+    material.bumpTexture.level = 1.5; // More pronounced surface detail
     
     // Subtle emissive for visibility
-    material.emissiveColor = Color3.FromHexString(data.color).scale(0.02);
+    material.emissiveColor = Color3.FromHexString(data.color).scale(0.015);
     
-    // Specular highlights from sun
-    material.specularIntensity = 0.4;
+    // Enhanced specular highlights from sun for glossy appearance
+    material.specularIntensity = 0.6;
     
-    // Enable lighting from point light
-    material.directIntensity = 1.0;
+    // Enable advanced lighting effects
+    material.directIntensity = 1.2;
+    material.environmentIntensity = 0.4;
+    material.microSurface = 0.85;
+    
+    // Enable subsurface scattering for certain planet types
+    if (data.name === "Earth" || data.name === "Mars") {
+      material.subSurface.isTranslucencyEnabled = true;
+      material.subSurface.translucencyIntensity = 0.2;
+    }
     
     planet.material = material;
 
@@ -565,7 +626,7 @@ export class PlanetScene {
         { 
           diameter: data.orbitRadius * 2, 
           thickness: 0.05, 
-          tessellation: 64 
+          tessellation: 128 // Increased from 64 for smoother appearance
         },
         this.scene
       );
@@ -573,10 +634,11 @@ export class PlanetScene {
       // No rotation - torus is already horizontal by default, matching XZ plane movement
       
       const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
-      orbitMaterial.emissiveColor = new Color3(0.1, 0.1, 0.15);
-      orbitMaterial.alpha = 0.2;
+      orbitMaterial.emissiveColor = new Color3(0.08, 0.08, 0.12);
+      orbitMaterial.alpha = 0.15; // Slightly more subtle
       orbitMaterial.wireframe = false;
       orbitPath.material = orbitMaterial;
+      orbitPath.isPickable = false; // Don't interfere with planet picking
     }
 
     // Note: Orbital motion and rotation handled in unified animation loop
