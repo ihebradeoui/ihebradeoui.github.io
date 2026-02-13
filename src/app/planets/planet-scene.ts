@@ -282,106 +282,19 @@ export class PlanetScene {
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.disableLighting = true;
     
-    // Create a pure black space background with realistic stars
-    const skyTexture = new DynamicTexture("skyTexture", 2048, scene, false);
-    const ctx = skyTexture.getContext();
-    
-    // Pure black background for deep space
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, 2048, 2048);
-    
-    // Add realistic star distribution with varying brightness and sizes
-    // Large bright stars
-    for (let i = 0; i < 200; i++) {
-      const x = Math.random() * 2048;
-      const y = Math.random() * 2048;
-      const brightness = Math.random() * 0.5 + 0.5; // 0.5 to 1.0
-      const size = Math.random() * 2.5 + 1.5;
-      
-      // Star glow
-      const starGradient = ctx.createRadialGradient(x, y, 0, x, y, size * 2);
-      starGradient.addColorStop(0, `rgba(255, 255, 255, ${brightness})`);
-      starGradient.addColorStop(0.5, `rgba(255, 255, 255, ${brightness * 0.3})`);
-      starGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = starGradient;
-      ctx.beginPath();
-      ctx.arc(x, y, size * 2, 0, Math.PI * 2);
-      ctx.fill();
-      
-      // Star core
-      ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    // Medium stars
-    for (let i = 0; i < 500; i++) {
-      const x = Math.random() * 2048;
-      const y = Math.random() * 2048;
-      const brightness = Math.random() * 0.4 + 0.4;
-      const size = Math.random() * 1.5 + 0.8;
-      
-      ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    // Small distant stars
-    for (let i = 0; i < 1500; i++) {
-      const x = Math.random() * 2048;
-      const y = Math.random() * 2048;
-      const brightness = Math.random() * 0.3 + 0.2;
-      const size = Math.random() * 0.8 + 0.3;
-      
-      ctx.fillStyle = `rgba(255, 255, 255, ${brightness})`;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    // Add some subtle color variation to a few stars (blue, yellow tint)
-    for (let i = 0; i < 50; i++) {
-      const x = Math.random() * 2048;
-      const y = Math.random() * 2048;
-      const size = Math.random() * 2 + 1;
-      const colorChoice = Math.random();
-      
-      if (colorChoice < 0.5) {
-        // Blue tint
-        ctx.fillStyle = `rgba(200, 220, 255, 0.8)`;
-      } else {
-        // Yellow/warm tint
-        ctx.fillStyle = `rgba(255, 245, 220, 0.8)`;
-      }
-      
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    skyTexture.update();
-    
-    // For skybox, use reflection texture which properly maps to cube faces
-    skyboxMaterial.reflectionTexture = skyTexture;
-    skyboxMaterial.reflectionTexture.coordinatesMode = Texture.SKYBOX_MODE;
-    
-    // Also use emissive for visibility in unlit scene
-    skyboxMaterial.emissiveTexture = skyTexture;
-    skyboxMaterial.emissiveColor = new Color3(1, 1, 1);
-    
-    // Ensure other colors don't interfere
+    // Use solid black for the skybox - stars will be rendered via particle system
+    // This is the most reliable approach that works consistently
+    skyboxMaterial.emissiveColor = new Color3(0, 0, 0); // Pure black
     skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
     skyboxMaterial.specularColor = new Color3(0, 0, 0);
     
-    // Try to use the environment texture if available for reflections
+    // Try to use the environment texture if available for reflections on planets
     try {
       const envTex = CubeTexture.CreateFromPrefilteredData("/assets/pbr/environment.env", scene);
       scene.environmentTexture = envTex;
       scene.environmentIntensity = 0.3; // Subtle environmental lighting
     } catch (e) {
-      // Use our custom texture
+      // Environment texture not available, that's ok
     }
     
     skybox.material = skyboxMaterial;
