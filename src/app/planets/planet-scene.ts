@@ -362,8 +362,18 @@ export class PlanetScene {
     }
     
     skyTexture.update();
+    
+    // For skybox, use reflection texture which properly maps to cube faces
+    skyboxMaterial.reflectionTexture = skyTexture;
+    skyboxMaterial.reflectionTexture.coordinatesMode = Texture.SKYBOX_MODE;
+    
+    // Also use emissive for visibility in unlit scene
     skyboxMaterial.emissiveTexture = skyTexture;
     skyboxMaterial.emissiveColor = new Color3(1, 1, 1);
+    
+    // Ensure other colors don't interfere
+    skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
+    skyboxMaterial.specularColor = new Color3(0, 0, 0);
     
     // Try to use the environment texture if available for reflections
     try {
