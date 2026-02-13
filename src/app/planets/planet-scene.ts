@@ -42,6 +42,18 @@ export interface PlanetData {
   actualRadius?: number; // Store actual radius for particle emitters
   orbitInclination?: number; // Inclination angle for varied orbital planes
   shape?: 'sphere' | 'cube' | 'torus' | 'octahedron' | 'dodecahedron' | 'icosahedron' | 'cylinder'; // Planet shape
+  discovered?: boolean; // Discovery status
+  discoveredAt?: number; // Timestamp of discovery
+  visitCount?: number; // How many times visited
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+  unlockedAt?: number;
 }
 
 export interface GalaxyData {
@@ -103,6 +115,29 @@ export class PlanetScene {
   private currentMelodyMode: number = 0;
   private melodyModes: Array<Array<{ freq: number; duration: number }>> = [];
   private melodyTimeout: number | null = null;
+  
+  // Discovery and achievements system
+  private achievements: Achievement[] = [];
+  private discoveryRadius: number = 15; // Distance within which planets are discovered
+  private showTutorial: boolean = !localStorage.getItem('planetsAppTutorialCompleted');
+  private tutorialStep: number = 0;
+  private tutorialOverlay: HTMLDivElement | null = null;
+  
+  // Performance monitoring
+  private fpsCounter: HTMLDivElement | null = null;
+  private performanceMode: 'low' | 'medium' | 'high' | 'auto' = 'auto';
+  private lastFrameTime: number = performance.now();
+  private frameCount: number = 0;
+  private fps: number = 60;
+  
+  // Info cards and UI
+  private infoCard: HTMLDivElement | null = null;
+  private hoveredPlanet: Mesh | null = null;
+  
+  // Tour mode
+  private tourActive: boolean = false;
+  private tourPlanetIndex: number = 0;
+  private tourInterval: number | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -117,10 +152,14 @@ export class PlanetScene {
     // Initialize audio
     this.initializeAudio();
     
+    // Initialize achievements
+    this.initializeAchievements();
+    
     this.scene = this.createScene();
     
-    // Run the render loop
+    // Run the render loop with performance monitoring
     this.engine.runRenderLoop(() => {
+      this.updatePerformanceMetrics();
       this.scene.render();
     });
 
@@ -138,6 +177,16 @@ export class PlanetScene {
     // Setup keyboard controls and camera presets
     this.setupKeyboardControls();
     this.setupCameraPresetUI();
+    
+    // Setup new production features
+    this.setupPerformanceMonitor();
+    this.setupInfoCard();
+    this.setupDiscoverySystem();
+    
+    // Show tutorial for first-time users
+    if (this.showTutorial) {
+      setTimeout(() => this.startTutorial(), 2000);
+    }
   }
 
   private createScene(): Scene {
@@ -1897,6 +1946,18 @@ export class PlanetScene {
           // Randomize melody mode
           this.randomizeMelodyMode();
           break;
+        case 't':
+        case 'T':
+          // Toggle auto tour
+          this.startTour();
+          break;
+        case 'h':
+        case 'H':
+          // Show help/tutorial again
+          if (!this.tutorialOverlay) {
+            this.startTutorial();
+          }
+          break;
       }
     };
     
@@ -2475,6 +2536,22 @@ export class PlanetScene {
           this.playChord([523.25, 659.25, 783.99], 0.3, 0.2); // C-E-G
           break;
           
+        case 'discovery':
+          // Discovery - magical ascending sparkle
+          oscillator.type = 'triangle';
+          oscillator.frequency.setValueAtTime(400, now);
+          oscillator.frequency.exponentialRampToValueAtTime(1600, now + 0.4);
+          gainNode.gain.setValueAtTime(0.3, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+          oscillator.start(now);
+          oscillator.stop(now + 0.5);
+          break;
+          
+        case 'achievement':
+          // Achievement - triumphant fanfare
+          this.playChord([523.25, 659.25, 783.99, 1046.5], 0.8, 0.25); // C-E-G-C
+          break;
+          
         default:
           // Default - simple beep
           oscillator.type = 'sine';
@@ -2601,7 +2678,502 @@ export class PlanetScene {
     this.isSoundEnabled = !this.isSoundEnabled;
   }
 
+  // ===== NEW PRODUCTION FEATURES =====
+  
+  private initializeAchievements(): void {
+    // Load saved achievements from localStorage
+    const saved = localStorage.getItem('planetsAppAchievements');
+    if (saved) {
+      this.achievements = JSON.parse(saved);
+    } else {
+      // Initialize default achievements
+      this.achievements = [
+        { id: 'first_discovery', name: 'First Contact', description: 'Discover your first planet', icon: '🌍', unlocked: false },
+        { id: 'explorer', name: 'Explorer', description: 'Discover 5 planets', icon: '🔭', unlocked: false },
+        { id: 'astronomer', name: 'Astronomer', description: 'Discover all planets in a galaxy', icon: '⭐', unlocked: false },
+        { id: 'galaxy_hopper', name: 'Galaxy Hopper', description: 'Visit all 6 galaxies', icon: '🌌', unlocked: false },
+        { id: 'completionist', name: 'Completionist', description: 'Discover every planet in all galaxies', icon: '🏆', unlocked: false },
+        { id: 'speedrunner', name: 'Speed Explorer', description: 'Discover 10 planets in under 2 minutes', icon: '⚡', unlocked: false },
+      ];
+    }
+  }
+
+  private setupDiscoverySystem(): void {
+    // Check for planet discoveries in the animation loop
+    this.scene.registerBeforeRender(() => {
+      this.checkPlanetDiscoveries();
+    });
+  }
+
+  private checkPlanetDiscoveries(): void {
+    const cameraPos = this.camera.position;
+    
+    this.planetDataMap.forEach((data, id) => {
+      const planet = this.planets.get(id);
+      if (planet && !data.discovered) {
+        const distance = Vector3.Distance(cameraPos, planet.position);
+        
+        // Discover planet if camera is within discovery radius
+        if (distance < this.discoveryRadius + (data.size || 1)) {
+          this.discoverPlanet(id, planet, data);
+        }
+      }
+    });
+  }
+
+  private discoverPlanet(id: string, planet: Mesh, data: PlanetData): void {
+    data.discovered = true;
+    data.discoveredAt = Date.now();
+    data.visitCount = (data.visitCount || 0) + 1;
+    
+    // Save discovery
+    this.savePlanetDiscovery(id, data);
+    
+    // Animate discovery - restore full visibility
+    if (planet.material && planet.material instanceof PBRMaterial) {
+      planet.material.alpha = 1.0;
+    }
+    
+    // Play discovery sound
+    this.playSound('discovery');
+    
+    // Show discovery notification
+    this.showDiscoveryNotification(data.name);
+    
+    // Check and unlock achievements
+    this.checkAchievements();
+  }
+
+  private savePlanetDiscovery(id: string, data: PlanetData): void {
+    const discoveries = JSON.parse(localStorage.getItem('planetsAppDiscoveries') || '{}');
+    discoveries[id] = {
+      discovered: data.discovered,
+      discoveredAt: data.discoveredAt,
+      visitCount: data.visitCount
+    };
+    localStorage.setItem('planetsAppDiscoveries', JSON.stringify(discoveries));
+  }
+
+  private showDiscoveryNotification(planetName: string): void {
+    const notification = document.createElement('div');
+    notification.className = 'discovery-notification';
+    notification.innerHTML = `
+      <div class="discovery-icon">🎉</div>
+      <div class="discovery-text">
+        <strong>Planet Discovered!</strong>
+        <span>${planetName}</span>
+      </div>
+    `;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.classList.add('show'), 10);
+    setTimeout(() => {
+      notification.classList.remove('show');
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  }
+
+  private checkAchievements(): void {
+    const discoveries = JSON.parse(localStorage.getItem('planetsAppDiscoveries') || '{}');
+    const discoveredCount = Object.keys(discoveries).length;
+    
+    // First Contact
+    if (discoveredCount >= 1 && !this.achievements[0].unlocked) {
+      this.unlockAchievement('first_discovery');
+    }
+    
+    // Explorer
+    if (discoveredCount >= 5 && !this.achievements[1].unlocked) {
+      this.unlockAchievement('explorer');
+    }
+    
+    // Completionist - check if all planets discovered
+    const totalPlanets = this.galaxies.reduce((sum, g) => sum + g.planets.length, 0);
+    if (discoveredCount >= totalPlanets && !this.achievements[4].unlocked) {
+      this.unlockAchievement('completionist');
+    }
+  }
+
+  private unlockAchievement(achievementId: string): void {
+    const achievement = this.achievements.find(a => a.id === achievementId);
+    if (achievement && !achievement.unlocked) {
+      achievement.unlocked = true;
+      achievement.unlockedAt = Date.now();
+      
+      // Save achievements
+      localStorage.setItem('planetsAppAchievements', JSON.stringify(this.achievements));
+      
+      // Show achievement notification
+      this.showAchievementNotification(achievement);
+      
+      // Play special sound
+      this.playSound('achievement');
+    }
+  }
+
+  private showAchievementNotification(achievement: Achievement): void {
+    const notification = document.createElement('div');
+    notification.className = 'achievement-notification';
+    notification.innerHTML = `
+      <div class="achievement-header">🏆 Achievement Unlocked!</div>
+      <div class="achievement-content">
+        <div class="achievement-icon">${achievement.icon}</div>
+        <div class="achievement-details">
+          <strong>${achievement.name}</strong>
+          <span>${achievement.description}</span>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.classList.add('show'), 10);
+    setTimeout(() => {
+      notification.classList.remove('show');
+      setTimeout(() => notification.remove(), 300);
+    }, 5000);
+  }
+
+  private setupPerformanceMonitor(): void {
+    // Create FPS counter
+    this.fpsCounter = document.createElement('div');
+    this.fpsCounter.className = 'fps-counter';
+    this.fpsCounter.innerHTML = `
+      <div class="fps-display">FPS: <span id="fpsValue">60</span></div>
+      <div class="quality-controls">
+        <button class="quality-btn" data-quality="low">Low</button>
+        <button class="quality-btn active" data-quality="auto">Auto</button>
+        <button class="quality-btn" data-quality="high">High</button>
+      </div>
+    `;
+    document.body.appendChild(this.fpsCounter);
+    
+    // Setup quality button handlers
+    this.fpsCounter.querySelectorAll('.quality-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const quality = target.getAttribute('data-quality') as 'low' | 'medium' | 'high' | 'auto';
+        this.setPerformanceMode(quality);
+        
+        // Update active state
+        this.fpsCounter?.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+      });
+    });
+  }
+
+  private updatePerformanceMetrics(): void {
+    this.frameCount++;
+    const currentTime = performance.now();
+    const deltaTime = currentTime - this.lastFrameTime;
+    
+    // Update FPS every second
+    if (deltaTime >= 1000) {
+      this.fps = Math.round((this.frameCount * 1000) / deltaTime);
+      this.frameCount = 0;
+      this.lastFrameTime = currentTime;
+      
+      // Update display
+      const fpsValue = document.getElementById('fpsValue');
+      if (fpsValue) {
+        fpsValue.textContent = this.fps.toString();
+        
+        // Color code based on FPS
+        if (this.fps >= 55) {
+          fpsValue.style.color = '#00ff00';
+        } else if (this.fps >= 30) {
+          fpsValue.style.color = '#ffaa00';
+        } else {
+          fpsValue.style.color = '#ff0000';
+        }
+      }
+      
+      // Auto-adjust quality if in auto mode
+      if (this.performanceMode === 'auto') {
+        if (this.fps < 30) {
+          this.setPerformanceMode('low');
+        } else if (this.fps > 55) {
+          this.setPerformanceMode('high');
+        }
+      }
+    }
+  }
+
+  private setPerformanceMode(mode: 'low' | 'medium' | 'high' | 'auto'): void {
+    this.performanceMode = mode;
+    
+    let particleMultiplier = 1.0;
+    let glowIntensity = 0.8;
+    
+    switch (mode) {
+      case 'low':
+        particleMultiplier = 0.3;
+        glowIntensity = 0.4;
+        break;
+      case 'auto':
+      case 'medium':
+        particleMultiplier = 0.6;
+        glowIntensity = 0.6;
+        break;
+      case 'high':
+        particleMultiplier = 1.0;
+        glowIntensity = 0.8;
+        break;
+    }
+    
+    // Adjust glow layer
+    if (this.glowLayer) {
+      this.glowLayer.intensity = glowIntensity;
+    }
+    
+    // Note: Particle systems would need to be adjusted individually
+    // This is a simplified version for demonstration
+  }
+
+  private setupInfoCard(): void {
+    // Create info card element
+    this.infoCard = document.createElement('div');
+    this.infoCard.className = 'planet-info-card';
+    this.infoCard.style.display = 'none';
+    document.body.appendChild(this.infoCard);
+    
+    // Setup hover detection
+    this.scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type === PointerEventTypes.POINTERMOVE) {
+        const pickResult = this.scene.pick(this.scene.pointerX, this.scene.pointerY);
+        
+        if (pickResult?.hit && pickResult.pickedMesh && pickResult.pickedMesh.name !== 'sun') {
+          const planet = pickResult.pickedMesh as Mesh;
+          if (this.planets.has(planet.name)) {
+            this.showInfoCard(planet);
+          }
+        } else {
+          this.hideInfoCard();
+        }
+      }
+    });
+  }
+
+  private showInfoCard(planet: Mesh): void {
+    if (this.hoveredPlanet === planet || !this.infoCard) return;
+    
+    this.hoveredPlanet = planet;
+    const data = this.planetDataMap.get(planet.name);
+    
+    if (data) {
+      const discovered = data.discovered ? '✅ Discovered' : '❓ Undiscovered';
+      const visitCount = data.visitCount || 0;
+      const shape = data.shape || 'sphere';
+      
+      this.infoCard.innerHTML = `
+        <div class="info-card-header">
+          <h3>${data.name}</h3>
+          <span class="discovery-badge">${discovered}</span>
+        </div>
+        <div class="info-card-body">
+          <p>${data.description}</p>
+          <div class="info-stats">
+            <div class="stat">
+              <span class="stat-label">Type:</span>
+              <span class="stat-value">${shape}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Size:</span>
+              <span class="stat-value">${data.size.toFixed(1)}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Visits:</span>
+              <span class="stat-value">${visitCount}</span>
+            </div>
+          </div>
+        </div>
+        <div class="info-card-footer">
+          <button class="info-btn" onclick="navigator.clipboard.writeText('Check out ${data.name} in the Planets App!')">📋 Share</button>
+        </div>
+      `;
+      
+      this.infoCard.style.display = 'block';
+    }
+  }
+
+  private hideInfoCard(): void {
+    if (this.infoCard && this.hoveredPlanet) {
+      this.infoCard.style.display = 'none';
+      this.hoveredPlanet = null;
+    }
+  }
+
+  private startTutorial(): void {
+    this.tutorialOverlay = document.createElement('div');
+    this.tutorialOverlay.className = 'tutorial-overlay';
+    document.body.appendChild(this.tutorialOverlay);
+    
+    this.showTutorialStep(0);
+  }
+
+  private showTutorialStep(step: number): void {
+    if (!this.tutorialOverlay) return;
+    
+    const steps = [
+      {
+        title: 'Welcome to the Planets Explorer! 🚀',
+        content: 'Explore amazing galaxies and discover unique planets. Use your mouse or keyboard to navigate.',
+        position: 'center'
+      },
+      {
+        title: 'Camera Controls',
+        content: 'Use Arrow Keys to navigate manually, or press M to toggle mouse control. Try the number keys 1-5 for preset views!',
+        position: 'top-right'
+      },
+      {
+        title: 'Discover Planets',
+        content: 'Fly close to planets to discover them! Each discovery is saved and you can earn achievements.',
+        position: 'center'
+      },
+      {
+        title: 'Switch Galaxies',
+        content: 'Press N or P to switch between 6 unique galaxies, each with their own themed planets and sun!',
+        position: 'top-left'
+      },
+      {
+        title: 'Planet Information',
+        content: 'Hover over planets to see detailed information cards. Click on them to edit and personalize!',
+        position: 'bottom-right'
+      },
+      {
+        title: 'Ready to Explore!',
+        content: 'You\'re all set! Check the FPS counter in the top-left to monitor performance. Enjoy your journey through space! ✨',
+        position: 'center'
+      }
+    ];
+    
+    if (step >= steps.length) {
+      this.completeTutorial();
+      return;
+    }
+    
+    const stepData = steps[step];
+    this.tutorialStep = step;
+    
+    this.tutorialOverlay.innerHTML = `
+      <div class="tutorial-content ${stepData.position}">
+        <h2>${stepData.title}</h2>
+        <p>${stepData.content}</p>
+        <div class="tutorial-progress">
+          ${steps.map((_, i) => `<span class="dot ${i === step ? 'active' : ''}"></span>`).join('')}
+        </div>
+        <div class="tutorial-buttons">
+          ${step > 0 ? '<button class="tutorial-btn" id="tutorialPrev">Previous</button>' : ''}
+          ${step < steps.length - 1 ? '<button class="tutorial-btn primary" id="tutorialNext">Next</button>' : '<button class="tutorial-btn primary" id="tutorialDone">Start Exploring!</button>'}
+          <button class="tutorial-btn skip" id="tutorialSkip">Skip Tutorial</button>
+        </div>
+      </div>
+    `;
+    
+    // Setup button handlers
+    document.getElementById('tutorialNext')?.addEventListener('click', () => this.showTutorialStep(step + 1));
+    document.getElementById('tutorialPrev')?.addEventListener('click', () => this.showTutorialStep(step - 1));
+    document.getElementById('tutorialDone')?.addEventListener('click', () => this.completeTutorial());
+    document.getElementById('tutorialSkip')?.addEventListener('click', () => this.completeTutorial());
+  }
+
+  private completeTutorial(): void {
+    if (this.tutorialOverlay) {
+      this.tutorialOverlay.classList.add('fade-out');
+      setTimeout(() => {
+        this.tutorialOverlay?.remove();
+        this.tutorialOverlay = null;
+      }, 300);
+    }
+    
+    localStorage.setItem('planetsAppTutorialCompleted', 'true');
+    this.showTutorial = false;
+  }
+
+  private startTour(): void {
+    if (this.tourActive) {
+      this.stopTour();
+      return;
+    }
+    
+    this.tourActive = true;
+    this.tourPlanetIndex = 0;
+    
+    const planets = Array.from(this.planets.values());
+    if (planets.length === 0) return;
+    
+    const tourNextPlanet = () => {
+      if (!this.tourActive) return;
+      
+      const planet = planets[this.tourPlanetIndex];
+      if (planet) {
+        // Smoothly move camera to planet
+        this.camera.setTarget(planet.position);
+        
+        // Show planet info
+        this.showInfoCard(planet);
+        
+        // Move to next planet
+        this.tourPlanetIndex = (this.tourPlanetIndex + 1) % planets.length;
+      }
+    };
+    
+    // Tour each planet for 5 seconds
+    tourNextPlanet();
+    this.tourInterval = window.setInterval(tourNextPlanet, 5000);
+    
+    this.showTourControls();
+  }
+
+  private stopTour(): void {
+    this.tourActive = false;
+    if (this.tourInterval) {
+      clearInterval(this.tourInterval);
+      this.tourInterval = null;
+    }
+    this.hideInfoCard();
+    this.hideTourControls();
+  }
+
+  private showTourControls(): void {
+    const controls = document.createElement('div');
+    controls.id = 'tourControls';
+    controls.className = 'tour-controls';
+    controls.innerHTML = `
+      <div class="tour-info">🎬 Auto Tour Active</div>
+      <button class="tour-btn" onclick="document.dispatchEvent(new Event('stopTour'))">Stop Tour</button>
+    `;
+    document.body.appendChild(controls);
+    
+    document.addEventListener('stopTour', () => this.stopTour(), { once: true });
+  }
+
+  private hideTourControls(): void {
+    const controls = document.getElementById('tourControls');
+    if (controls) {
+      controls.remove();
+    }
+  }
+
   public dispose(): void {
+    // Stop tour if active
+    this.stopTour();
+    
+    // Cleanup new UI elements
+    if (this.fpsCounter && this.fpsCounter.parentNode) {
+      this.fpsCounter.parentNode.removeChild(this.fpsCounter);
+      this.fpsCounter = null;
+    }
+    
+    if (this.infoCard && this.infoCard.parentNode) {
+      this.infoCard.parentNode.removeChild(this.infoCard);
+      this.infoCard = null;
+    }
+    
+    if (this.tutorialOverlay && this.tutorialOverlay.parentNode) {
+      this.tutorialOverlay.parentNode.removeChild(this.tutorialOverlay);
+      this.tutorialOverlay = null;
+    }
+    
     // Stop and cleanup audio
     if (this.backgroundMusic) {
       this.backgroundMusic.pause();
