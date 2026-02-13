@@ -97,6 +97,9 @@ export class PlanetScene {
   private sounds: Map<string, HTMLAudioElement> = new Map();
   private isMusicEnabled: boolean = true;
   private isSoundEnabled: boolean = true;
+  private audioContext: AudioContext | null = null;
+  private musicOscillators: OscillatorNode[] = [];
+  private musicGainNode: GainNode | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -1810,12 +1813,15 @@ export class PlanetScene {
     // Create a simple ambient drone using Web Audio API
     // This creates an ethereal space-like ambience
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // Reuse existing audio context or create new one
+      if (!this.audioContext) {
+        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
       
       // Create oscillators for ambient drone
-      const osc1 = audioContext.createOscillator();
-      const osc2 = audioContext.createOscillator();
-      const osc3 = audioContext.createOscillator();
+      const osc1 = this.audioContext.createOscillator();
+      const osc2 = this.audioContext.createOscillator();
+      const osc3 = this.audioContext.createOscillator();
       
       osc1.type = 'sine';
       osc2.type = 'sine';
@@ -1825,20 +1831,21 @@ export class PlanetScene {
       osc2.frequency.value = 165; // E3
       osc3.frequency.value = 220; // A3
       
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0.05; // Very quiet ambient
+      this.musicGainNode = this.audioContext.createGain();
+      this.musicGainNode.gain.value = 0.05; // Very quiet ambient
       
-      osc1.connect(gainNode);
-      osc2.connect(gainNode);
-      osc3.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+      osc1.connect(this.musicGainNode);
+      osc2.connect(this.musicGainNode);
+      osc3.connect(this.musicGainNode);
+      this.musicGainNode.connect(this.audioContext.destination);
       
       osc1.start();
       osc2.start();
       osc3.start();
       
-      // Store reference (we'll use this pattern for now)
-      // In production, load actual audio file
+      // Store references for cleanup
+      this.musicOscillators = [osc1, osc2, osc3];
+      
       console.log('Synthesized space ambience started');
     } catch (err) {
       console.warn('Could not create synthesized music:', err);
@@ -1863,10 +1870,9 @@ export class PlanetScene {
     
     const sound = this.sounds.get(soundName);
     if (sound) {
-      // Clone and play to allow overlapping sounds
-      const soundClone = sound.cloneNode() as HTMLAudioElement;
-      soundClone.volume = sound.volume;
-      soundClone.play().catch(err => {
+      // Reset and play existing audio element instead of cloning
+      sound.currentTime = 0;
+      sound.play().catch(err => {
         // Silently fail if sound can't play
         console.debug(`Could not play sound ${soundName}:`, err);
       });
@@ -1947,11 +1953,12 @@ export class PlanetScene {
 
   private toggleMusic(): void {
     this.isMusicEnabled = !this.isMusicEnabled;
-    if (this.backgroundMusic) {
+    if (this.musicGainNode) {
+      // Fade music in/out instead of abruptly stopping
       if (this.isMusicEnabled) {
-        this.backgroundMusic.play().catch(console.warn);
+        this.musicGainNode.gain.value = 0.05;
       } else {
-        this.backgroundMusic.pause();
+        this.musicGainNode.gain.value = 0;
       }
     }
   }
@@ -1966,6 +1973,29 @@ export class PlanetScene {
       this.backgroundMusic.pause();
       this.backgroundMusic = null;
     }
+    
+    // Stop oscillators
+    this.musicOscillators.forEach(osc => {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch (err) {
+        // Oscillator might already be stopped
+      }
+    });
+    this.musicOscillators = [];
+    
+    // Close audio context
+    if (this.audioContext) {
+      this.audioContext.close().catch(console.warn);
+      this.audioContext = null;
+    }
+    
+    if (this.musicGainNode) {
+      this.musicGainNode.disconnect();
+      this.musicGainNode = null;
+    }
+    
     this.sounds.clear();
     
     // Clear meteor spawning interval
