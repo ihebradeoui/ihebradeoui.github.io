@@ -887,6 +887,7 @@ export class PlanetScene {
     );
     atmosphere.parent = planet;
     atmosphere.position = Vector3.Zero();
+    atmosphere.isPickable = false; // Don't block planet picking
     
     const atmoMat = new StandardMaterial(`atmoMat_${planet.name}`, this.scene);
     atmoMat.diffuseColor = new Color3(0, 0, 0);
@@ -1018,6 +1019,7 @@ export class PlanetScene {
     ring.parent = planet;
     ring.position = Vector3.Zero();
     ring.rotation.x = Math.PI / 2 + 0.2; // Slightly tilted
+    ring.isPickable = false; // Don't block planet picking
     
     const ringMat = new StandardMaterial(`ringMat_${planet.name}`, this.scene);
     
@@ -1051,6 +1053,7 @@ export class PlanetScene {
     plane.parent = planet;
     plane.position = new Vector3(0, -2, 0);
     plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    plane.isPickable = false; // Don't block planet picking
 
     // Create dynamic texture for text
     const texture = new DynamicTexture(
