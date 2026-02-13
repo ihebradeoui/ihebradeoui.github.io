@@ -1232,18 +1232,19 @@ export class PlanetScene {
         case '3':
           this.setCameraPreset(CameraPreset.FOLLOW_SUN);
           break;
-        case '4': // Follow Mercury
-        case '5': // Follow Venus
-        case '6': // Follow Earth
-        case '7': // Follow Mars
-        case '8': // Follow Jupiter
-        case '9': // Follow Saturn
-          // Follow specific planet (4=Mercury, 5=Venus, 6=Earth, 7=Mars, 8=Jupiter, 9=Saturn)
+        case '4': // Follow Mercury (planet_0)
+        case '5': // Follow Venus (planet_1)
+        case '6': // Follow Earth (planet_2)
+        case '7': // Follow Mars (planet_3)
+        case '8': // Follow Jupiter (planet_4)
+        case '9': // Follow Saturn (planet_5)
+          // Follow specific planet: Keys 4-9 map to first 6 planets (Mercury through Saturn)
+          // Note: Uranus (planet_6) and Neptune (planet_7) are not mapped due to keyboard limitations
           const planetIndex = parseInt(event.key) - 4;
           const planetId = `planet_${planetIndex}`;
           const planet = this.planets.get(planetId);
           if (planet) {
-            this.followPlanet(planet);
+            this.followPlanet(planet, planetId);
           }
           break;
         case 'ArrowUp':
@@ -1320,13 +1321,20 @@ export class PlanetScene {
     this.updatePresetUI(this.getPresetName(preset));
   }
 
-  private followPlanet(planet: Mesh): void {
+  private followPlanet(planet: Mesh, planetId?: string): void {
     this.currentPreset = CameraPreset.FOLLOW_PLANET;
     this.followingPlanet = planet;
     
-    // Position camera relative to planet
-    const planetData = Array.from(this.planetDataMap.entries()).find(([id, _]) => this.planets.get(id) === planet);
-    const planetName = planetData ? planetData[1].name : 'Unknown';
+    // Get planet name efficiently using provided ID or lookup
+    let planetName = 'Unknown';
+    if (planetId && this.planetDataMap.has(planetId)) {
+      planetName = this.planetDataMap.get(planetId)!.name;
+    } else {
+      // Fallback: find planet ID by mesh (less efficient)
+      const planetEntry = Array.from(this.planetDataMap.entries())
+        .find(([id, _]) => this.planets.get(id) === planet);
+      planetName = planetEntry ? planetEntry[1].name : 'Unknown';
+    }
     
     const offset = new Vector3(10, 10, 10);
     const targetPosition = planet.position.add(offset);
@@ -1418,7 +1426,9 @@ export class PlanetScene {
 
   private toggleManualControl(): void {
     // Check if camera controls are currently attached
-    const isAttached = this.camera.inputs && this.camera.inputs.attached && 
+    const isAttached = this.camera.inputs && 
+                       this.camera.inputs.attached && 
+                       typeof this.camera.inputs.attached === 'object' &&
                        Object.keys(this.camera.inputs.attached).length > 0;
     
     if (isAttached) {
