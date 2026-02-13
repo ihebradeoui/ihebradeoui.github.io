@@ -100,6 +100,9 @@ export class PlanetScene {
   private audioContext: AudioContext | null = null;
   private musicOscillators: OscillatorNode[] = [];
   private musicGainNode: GainNode | null = null;
+  private currentMelodyMode: number = 0;
+  private melodyModes: Array<Array<{ freq: number; duration: number }>> = [];
+  private melodyTimeout: number | null = null;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -1384,11 +1387,11 @@ export class PlanetScene {
     );
     plane.parent = planet;
     
-    // Position label above and slightly in front of planet to avoid occlusion
+    // Position label above planet, centered (no left/right offset)
     // Scale position based on planet size to ensure visibility
     const planetSize = planet.scaling.x || 1;
     const offset = Math.max(2.5, planetSize * 1.5); // Larger offset for bigger planets
-    plane.position = new Vector3(0, offset, 1);
+    plane.position = new Vector3(0, offset, 0); // Centered - no Z offset
     
     plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     plane.isPickable = false; // Don't block planet picking
@@ -1408,16 +1411,11 @@ export class PlanetScene {
     // Draw text with semi-transparent background
     const ctx = texture.getContext() as CanvasRenderingContext2D;
     
-    // Background with rounded corners effect
+    // Background with no border
     ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
     ctx.fillRect(0, 0, 512, 128);
     
-    // Add border for better visibility
-    ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, 508, 124);
-    
-    // Draw text
+    // Draw text centered
     ctx.font = 'bold 48px Arial';
     ctx.fillStyle = 'white';
     ctx.textAlign = 'center';
@@ -1871,6 +1869,16 @@ export class PlanetScene {
           const nextIndex = (this.currentGalaxyIndex + 1) % this.galaxies.length;
           this.switchGalaxy(nextIndex);
           break;
+        case 'n':
+        case 'N':
+          // Switch to next melody mode
+          this.switchMelodyMode();
+          break;
+        case 'r':
+        case 'R':
+          // Randomize melody mode
+          this.randomizeMelodyMode();
+          break;
       }
     };
     
@@ -1904,6 +1912,8 @@ export class PlanetScene {
       <div style="margin-bottom: 5px;"><strong>Arrow Keys:</strong> Manual Control</div>
       <div style="margin-bottom: 5px;"><strong>M:</strong> Toggle Mouse Control</div>
       <div style="margin-bottom: 5px;"><strong>G:</strong> Switch Galaxy</div>
+      <div style="margin-bottom: 5px;"><strong>N:</strong> Next Melody Mode</div>
+      <div style="margin-bottom: 5px;"><strong>R:</strong> Random Melody</div>
       <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3);">
         <strong>Current:</strong> <span id="currentPreset">Spawn Point</span>
       </div>
@@ -2072,7 +2082,7 @@ export class PlanetScene {
 
   private createSynthesizedSpaceMusic(): void {
     // Create a melodic ambient sequence using Web Audio API
-    // Uses an arpeggio pattern for more interesting soundscape
+    // Multiple modes for variety
     try {
       // Reuse existing audio context or create new one
       if (!this.audioContext) {
@@ -2084,59 +2094,158 @@ export class PlanetScene {
       this.musicGainNode.gain.value = 0.04; // Quiet ambient volume
       this.musicGainNode.connect(this.audioContext.destination);
       
-      // Melodic sequence in C minor pentatonic (C, Eb, F, G, Bb)
-      // Frequencies for ethereal space feel
-      const melody = [
-        { freq: 261.63, duration: 2.0 },  // C4
-        { freq: 311.13, duration: 1.5 },  // Eb4
-        { freq: 349.23, duration: 1.5 },  // F4
-        { freq: 392.00, duration: 2.0 },  // G4
-        { freq: 293.66, duration: 1.5 },  // D4
-        { freq: 261.63, duration: 2.5 },  // C4
-        { freq: 233.08, duration: 2.0 },  // Bb3
-        { freq: 196.00, duration: 3.0 }   // G3
+      // Define multiple melody modes
+      this.melodyModes = [
+        // Mode 0: C minor pentatonic (Original)
+        [
+          { freq: 261.63, duration: 2.0 },  // C4
+          { freq: 311.13, duration: 1.5 },  // Eb4
+          { freq: 349.23, duration: 1.5 },  // F4
+          { freq: 392.00, duration: 2.0 },  // G4
+          { freq: 293.66, duration: 1.5 },  // D4
+          { freq: 261.63, duration: 2.5 },  // C4
+          { freq: 233.08, duration: 2.0 },  // Bb3
+          { freq: 196.00, duration: 3.0 }   // G3
+        ],
+        // Mode 1: A minor pentatonic (Melancholic)
+        [
+          { freq: 220.00, duration: 2.0 },  // A3
+          { freq: 261.63, duration: 1.5 },  // C4
+          { freq: 293.66, duration: 1.5 },  // D4
+          { freq: 329.63, duration: 2.0 },  // E4
+          { freq: 392.00, duration: 1.5 },  // G4
+          { freq: 440.00, duration: 2.5 },  // A4
+          { freq: 329.63, duration: 2.0 },  // E4
+          { freq: 293.66, duration: 3.0 }   // D4
+        ],
+        // Mode 2: D major pentatonic (Uplifting)
+        [
+          { freq: 293.66, duration: 1.5 },  // D4
+          { freq: 329.63, duration: 1.5 },  // E4
+          { freq: 369.99, duration: 2.0 },  // F#4
+          { freq: 440.00, duration: 2.0 },  // A4
+          { freq: 493.88, duration: 1.5 },  // B4
+          { freq: 587.33, duration: 2.5 },  // D5
+          { freq: 493.88, duration: 2.0 },  // B4
+          { freq: 440.00, duration: 3.0 }   // A4
+        ],
+        // Mode 3: E phrygian (Mystical)
+        [
+          { freq: 164.81, duration: 2.5 },  // E3
+          { freq: 174.61, duration: 2.0 },  // F3
+          { freq: 196.00, duration: 1.5 },  // G3
+          { freq: 220.00, duration: 2.0 },  // A3
+          { freq: 246.94, duration: 1.5 },  // B3
+          { freq: 261.63, duration: 2.5 },  // C4
+          { freq: 293.66, duration: 2.0 },  // D4
+          { freq: 329.63, duration: 3.0 }   // E4
+        ]
       ];
       
-      // Play the melody in a loop
-      let currentTime = this.audioContext.currentTime;
-      const playMelody = () => {
-        melody.forEach((note, index) => {
-          const osc = this.audioContext!.createOscillator();
-          const noteGain = this.audioContext!.createGain();
-          
-          osc.type = 'sine';
-          osc.frequency.value = note.freq;
-          
-          // Envelope for each note (fade in/out)
-          noteGain.gain.setValueAtTime(0, currentTime);
-          noteGain.gain.linearRampToValueAtTime(0.3, currentTime + 0.1);
-          noteGain.gain.exponentialRampToValueAtTime(0.01, currentTime + note.duration - 0.1);
-          
-          osc.connect(noteGain);
-          noteGain.connect(this.musicGainNode!);
-          
-          osc.start(currentTime);
-          osc.stop(currentTime + note.duration);
-          
-          this.musicOscillators.push(osc);
-          currentTime += note.duration;
-        });
-        
-        // Schedule next loop
-        const totalDuration = melody.reduce((sum, note) => sum + note.duration, 0);
-        setTimeout(() => {
-          if (this.isMusicEnabled && this.audioContext) {
-            currentTime = this.audioContext.currentTime;
-            playMelody();
-          }
-        }, totalDuration * 1000);
-      };
+      this.playCurrentMelody();
       
-      playMelody();
-      
-      console.log('Melodic space ambience started');
+      console.log(`Melodic space ambience started - Mode ${this.currentMelodyMode}`);
     } catch (err) {
       console.warn('Could not create synthesized music:', err);
+    }
+  }
+
+  private playCurrentMelody(): void {
+    if (!this.audioContext || !this.musicGainNode) return;
+    
+    const melody = this.melodyModes[this.currentMelodyMode];
+    
+    // Play the melody in a loop
+    let currentTime = this.audioContext.currentTime;
+    
+    melody.forEach((note, index) => {
+      const osc = this.audioContext!.createOscillator();
+      const noteGain = this.audioContext!.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = note.freq;
+      
+      // Envelope for each note (fade in/out)
+      noteGain.gain.setValueAtTime(0, currentTime);
+      noteGain.gain.linearRampToValueAtTime(0.3, currentTime + 0.1);
+      noteGain.gain.exponentialRampToValueAtTime(0.01, currentTime + note.duration - 0.1);
+      
+      osc.connect(noteGain);
+      noteGain.connect(this.musicGainNode!);
+      
+      osc.start(currentTime);
+      osc.stop(currentTime + note.duration);
+      
+      this.musicOscillators.push(osc);
+      currentTime += note.duration;
+    });
+    
+    // Schedule next loop
+    const totalDuration = melody.reduce((sum, note) => sum + note.duration, 0);
+    this.melodyTimeout = window.setTimeout(() => {
+      if (this.isMusicEnabled && this.audioContext) {
+        this.playCurrentMelody();
+      }
+    }, totalDuration * 1000);
+  }
+
+  private switchMelodyMode(): void {
+    // Stop current melody
+    if (this.melodyTimeout !== null) {
+      clearTimeout(this.melodyTimeout);
+      this.melodyTimeout = null;
+    }
+    
+    // Stop all current oscillators
+    this.musicOscillators.forEach(osc => {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch (err) {
+        // Oscillator might already be stopped
+      }
+    });
+    this.musicOscillators = [];
+    
+    // Switch to next mode
+    this.currentMelodyMode = (this.currentMelodyMode + 1) % this.melodyModes.length;
+    
+    // Start new melody
+    if (this.isMusicEnabled && this.audioContext) {
+      this.playCurrentMelody();
+      console.log(`Switched to melody mode ${this.currentMelodyMode}`);
+    }
+  }
+
+  private randomizeMelodyMode(): void {
+    // Stop current melody
+    if (this.melodyTimeout !== null) {
+      clearTimeout(this.melodyTimeout);
+      this.melodyTimeout = null;
+    }
+    
+    // Stop all current oscillators
+    this.musicOscillators.forEach(osc => {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch (err) {
+        // Oscillator might already be stopped
+      }
+    });
+    this.musicOscillators = [];
+    
+    // Pick random mode (different from current)
+    let newMode = this.currentMelodyMode;
+    while (newMode === this.currentMelodyMode && this.melodyModes.length > 1) {
+      newMode = Math.floor(Math.random() * this.melodyModes.length);
+    }
+    this.currentMelodyMode = newMode;
+    
+    // Start new melody
+    if (this.isMusicEnabled && this.audioContext) {
+      this.playCurrentMelody();
+      console.log(`Randomized to melody mode ${this.currentMelodyMode}`);
     }
   }
 
@@ -2260,6 +2369,12 @@ export class PlanetScene {
     if (this.backgroundMusic) {
       this.backgroundMusic.pause();
       this.backgroundMusic = null;
+    }
+    
+    // Stop melody timeout
+    if (this.melodyTimeout !== null) {
+      clearTimeout(this.melodyTimeout);
+      this.melodyTimeout = null;
     }
     
     // Stop oscillators
