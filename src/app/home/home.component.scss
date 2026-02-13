@@ -44,8 +44,8 @@ input:focus {
 }
 
 button {
-  display: block;
-  margin: 0 auto;
+  display: inline-block;
+  margin: 0 10px;
   line-height: 28pt;
   padding: 0 20px;
   background: #ffa580;
@@ -59,6 +59,11 @@ button:hover {
   background: black;
   color: white;
   border: 1px solid black;
+}
+
+.button-container {
+  text-align: center;
+  margin-top: 10px;
 }
 
 ::selection {
