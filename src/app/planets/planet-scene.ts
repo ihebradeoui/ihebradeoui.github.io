@@ -41,6 +41,7 @@ export interface PlanetData {
   orbitAngle?: number;
   actualRadius?: number; // Store actual radius for particle emitters
   orbitInclination?: number; // Inclination angle for varied orbital planes
+  shape?: 'sphere' | 'cube' | 'torus' | 'octahedron' | 'dodecahedron' | 'icosahedron' | 'cylinder'; // Planet shape
 }
 
 export interface GalaxyData {
@@ -57,6 +58,7 @@ export interface GalaxyData {
     orbitRadius: number;
     speed: number;
     inclination: number;
+    shape?: 'sphere' | 'cube' | 'torus' | 'octahedron' | 'dodecahedron' | 'icosahedron' | 'cylinder';
   }>;
 }
 
@@ -89,6 +91,12 @@ export class PlanetScene {
   private galaxies: GalaxyData[] = [];
   private currentGalaxyIndex: number = 0;
   private orbitPaths: Map<string, Mesh> = new Map(); // Track orbit paths for cleanup
+  
+  // Audio management
+  private backgroundMusic: HTMLAudioElement | null = null;
+  private sounds: Map<string, HTMLAudioElement> = new Map();
+  private isMusicEnabled: boolean = true;
+  private isSoundEnabled: boolean = true;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -99,6 +107,9 @@ export class PlanetScene {
     
     // Initialize galaxies before creating the scene
     this.initializeGalaxies();
+    
+    // Initialize audio
+    this.initializeAudio();
     
     this.scene = this.createScene();
     
@@ -512,12 +523,64 @@ export class PlanetScene {
   }
 
   private createPlanet(id: string, data: PlanetData): Mesh {
-    // Create planet sphere with ULTRA HIGH detail for Unreal Engine 5 style appearance
-    const planet = MeshBuilder.CreateSphere(
-      id,
-      { diameter: data.size, segments: 256 }, // Increased to 256 for ultra high poly look
-      this.scene
-    );
+    // Create planet mesh based on shape type (default to sphere for backward compatibility)
+    const shape = data.shape || 'sphere';
+    let planet: Mesh;
+    
+    switch(shape) {
+      case 'cube':
+        planet = MeshBuilder.CreateBox(
+          id,
+          { size: data.size },
+          this.scene
+        );
+        break;
+      case 'torus':
+        planet = MeshBuilder.CreateTorus(
+          id,
+          { diameter: data.size, thickness: data.size * 0.3, tessellation: 64 },
+          this.scene
+        );
+        break;
+      case 'octahedron':
+        planet = MeshBuilder.CreatePolyhedron(
+          id,
+          { type: 1, size: data.size * 0.6 },
+          this.scene
+        );
+        break;
+      case 'dodecahedron':
+        planet = MeshBuilder.CreatePolyhedron(
+          id,
+          { type: 2, size: data.size * 0.6 },
+          this.scene
+        );
+        break;
+      case 'icosahedron':
+        planet = MeshBuilder.CreatePolyhedron(
+          id,
+          { type: 0, size: data.size * 0.6 },
+          this.scene
+        );
+        break;
+      case 'cylinder':
+        planet = MeshBuilder.CreateCylinder(
+          id,
+          { diameter: data.size, height: data.size * 1.2, tessellation: 32 },
+          this.scene
+        );
+        break;
+      case 'sphere':
+      default:
+        // Create planet sphere with ULTRA HIGH detail for Unreal Engine 5 style appearance
+        planet = MeshBuilder.CreateSphere(
+          id,
+          { diameter: data.size, segments: 256 }, // Increased to 256 for ultra high poly look
+          this.scene
+        );
+        break;
+    }
+    
     planet.position = new Vector3(data.position.x, data.position.y, data.position.z);
     
     // Ensure planet is pickable
@@ -600,6 +663,7 @@ export class PlanetScene {
     // Also add a hover effect to show the planet is interactive
     planet.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnPointerOverTrigger, () => {
+        this.playSound('hover');
         planet.scaling = new Vector3(1.05, 1.05, 1.05);
       })
     );
@@ -1042,6 +1106,7 @@ export class PlanetScene {
   }
 
   private onPlanetClick(planet: Mesh, planetId: string): void {
+    this.playSound('click');
     this.selectedPlanet = planet;
     const modal = document.getElementById('planetModal');
     const nameInput = document.getElementById('planetName') as HTMLInputElement;
@@ -1064,6 +1129,7 @@ export class PlanetScene {
         });
       }
 
+      this.playSound('modal-open');
       modal.style.display = 'block';
       (modal as any).dataset.planetId = planetId;
     }
@@ -1076,12 +1142,14 @@ export class PlanetScene {
 
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
+        this.playSound('modal-close');
         if (modal) modal.style.display = 'none';
       });
     }
 
     window.addEventListener('click', (event) => {
       if (event.target === modal) {
+        this.playSound('modal-close');
         if (modal) modal.style.display = 'none';
       }
     });
@@ -1238,11 +1306,64 @@ export class PlanetScene {
         { name: "Blazeon", description: "Eternal solar flares", color: "#FF1493", size: 3.5, orbitRadius: 95, speed: 0.0005, inclination: 0.08 }
       ]
     });
+
+    // Mechanis - A technological galaxy with geometric worlds
+    this.galaxies.push({
+      id: 'mechanis',
+      name: 'Mechanis',
+      description: 'A galaxy of geometric and technological worlds',
+      sunColor: '#00FF00',
+      sunSize: 9,
+      planets: [
+        { name: "Cubix", description: "A perfect cubic world", color: "#4169E1", size: 2.2, orbitRadius: 20, speed: 0.0024, inclination: 0.1, shape: 'cube' },
+        { name: "Torusphere", description: "Ringed artificial world", color: "#32CD32", size: 2.5, orbitRadius: 30, speed: 0.0019, inclination: 0.05, shape: 'torus' },
+        { name: "Octara", description: "Eight-sided crystal formation", color: "#FF6347", size: 2.0, orbitRadius: 42, speed: 0.0015, inclination: 0.12, shape: 'octahedron' },
+        { name: "Dodeca", description: "Twelve-faced geometric marvel", color: "#FFD700", size: 2.8, orbitRadius: 56, speed: 0.0011, inclination: 0.08, shape: 'dodecahedron' },
+        { name: "Icosa", description: "Twenty-sided engineering wonder", color: "#00CED1", size: 3.2, orbitRadius: 72, speed: 0.0008, inclination: 0.06, shape: 'icosahedron' },
+        { name: "Cylios", description: "Rotating cylindrical habitat", color: "#9370DB", size: 2.6, orbitRadius: 88, speed: 0.0006, inclination: 0.14, shape: 'cylinder' }
+      ]
+    });
+
+    // Aquaterra - An ocean-themed galaxy
+    this.galaxies.push({
+      id: 'aquaterra',
+      name: 'Aquaterra',
+      description: 'A galaxy of water worlds and aquatic paradises',
+      sunColor: '#1E90FF',
+      sunSize: 8.5,
+      planets: [
+        { name: "Neptara", description: "Endless ocean planet", color: "#1E90FF", size: 2.4, orbitRadius: 22, speed: 0.0023, inclination: 0.09, shape: 'sphere' },
+        { name: "Coralys", description: "Living reef world", color: "#FF7F50", size: 2.1, orbitRadius: 32, speed: 0.0018, inclination: 0.11, shape: 'icosahedron' },
+        { name: "Tidalis", description: "World of eternal tides", color: "#4682B4", size: 2.9, orbitRadius: 44, speed: 0.0014, inclination: 0.07, shape: 'sphere' },
+        { name: "Marinius", description: "Deep trench planet", color: "#000080", size: 3.5, orbitRadius: 58, speed: 0.001, inclination: 0.05, shape: 'octahedron' },
+        { name: "Vaporis", description: "Steam and mist covered", color: "#B0E0E6", size: 2.3, orbitRadius: 74, speed: 0.0007, inclination: 0.13, shape: 'sphere' },
+        { name: "Abyssus", description: "Mysterious underwater caverns", color: "#191970", size: 4.0, orbitRadius: 92, speed: 0.0005, inclination: 0.1, shape: 'dodecahedron' }
+      ]
+    });
+
+    // Verdantia - A lush, bio-diverse galaxy
+    this.galaxies.push({
+      id: 'verdantia',
+      name: 'Verdantia',
+      description: 'A galaxy teeming with exotic life and lush forests',
+      sunColor: '#ADFF2F',
+      sunSize: 7.5,
+      planets: [
+        { name: "Floralis", description: "Covered in giant flowers", color: "#FF1493", size: 2.3, orbitRadius: 19, speed: 0.0026, inclination: 0.1, shape: 'sphere' },
+        { name: "Arboria", description: "World of massive trees", color: "#228B22", size: 2.7, orbitRadius: 28, speed: 0.002, inclination: 0.08, shape: 'cylinder' },
+        { name: "Fungara", description: "Bioluminescent mushroom forests", color: "#9370DB", size: 2.0, orbitRadius: 39, speed: 0.0016, inclination: 0.12, shape: 'torus' },
+        { name: "Vineworld", description: "Interconnected vine networks", color: "#32CD32", size: 3.3, orbitRadius: 52, speed: 0.0012, inclination: 0.06, shape: 'icosahedron' },
+        { name: "Junglios", description: "Dense rainforest planet", color: "#006400", size: 3.8, orbitRadius: 67, speed: 0.0009, inclination: 0.09, shape: 'sphere' },
+        { name: "Pollenis", description: "Eternal spring with blooming meadows", color: "#FFB6C1", size: 2.5, orbitRadius: 84, speed: 0.0006, inclination: 0.11, shape: 'octahedron' },
+        { name: "Bioforge", description: "Living organism planet", color: "#7FFF00", size: 4.2, orbitRadius: 98, speed: 0.0004, inclination: 0.07, shape: 'dodecahedron' }
+      ]
+    });
   }
 
   private switchGalaxy(index: number): void {
     if (index < 0 || index >= this.galaxies.length) return;
     
+    this.playSound('galaxy-switch');
     this.currentGalaxyIndex = index;
     
     // Clear existing planets and orbit paths
@@ -1316,7 +1437,8 @@ export class PlanetScene {
         orbitRadius: planetConfig.orbitRadius,
         orbitSpeed: planetConfig.speed,
         orbitAngle: startAngle,
-        orbitInclination: planetConfig.inclination
+        orbitInclination: planetConfig.inclination,
+        shape: planetConfig.shape || 'sphere'
       });
     });
   }
@@ -1593,7 +1715,121 @@ export class PlanetScene {
   }
 
 
+  private initializeAudio(): void {
+    // Initialize background space music
+    // Using a generated tone/ambient sound as placeholder since we can't embed actual files
+    // In production, you would load actual audio files
+    try {
+      // Create audio context for synthesized space ambience
+      this.createSynthesizedSpaceMusic();
+      
+      // Initialize sound effects
+      this.createSoundEffects();
+      
+      // Start playing background music
+      if (this.backgroundMusic) {
+        this.backgroundMusic.volume = 0.3;
+        this.backgroundMusic.loop = true;
+        // Auto-play will be attempted but may be blocked by browser policy
+        this.backgroundMusic.play().catch(err => {
+          console.log('Background music autoplay blocked - user interaction needed');
+        });
+      }
+    } catch (err) {
+      console.warn('Audio initialization failed:', err);
+    }
+  }
+
+  private createSynthesizedSpaceMusic(): void {
+    // Create a simple ambient drone using Web Audio API
+    // This creates an ethereal space-like ambience
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Create oscillators for ambient drone
+      const osc1 = audioContext.createOscillator();
+      const osc2 = audioContext.createOscillator();
+      const osc3 = audioContext.createOscillator();
+      
+      osc1.type = 'sine';
+      osc2.type = 'sine';
+      osc3.type = 'sine';
+      
+      osc1.frequency.value = 110; // A2
+      osc2.frequency.value = 165; // E3
+      osc3.frequency.value = 220; // A3
+      
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 0.05; // Very quiet ambient
+      
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      osc3.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      osc1.start();
+      osc2.start();
+      osc3.start();
+      
+      // Store reference (we'll use this pattern for now)
+      // In production, load actual audio file
+      console.log('Synthesized space ambience started');
+    } catch (err) {
+      console.warn('Could not create synthesized music:', err);
+    }
+  }
+
+  private createSoundEffects(): void {
+    // Create placeholder sound effects
+    // In production, these would be actual audio files
+    const soundNames = ['click', 'hover', 'galaxy-switch', 'camera-change', 'modal-open', 'modal-close'];
+    
+    soundNames.forEach(name => {
+      const audio = new Audio();
+      // Placeholder - in production you'd set: audio.src = `assets/audio/${name}.mp3`;
+      audio.volume = 0.5;
+      this.sounds.set(name, audio);
+    });
+  }
+
+  private playSound(soundName: string): void {
+    if (!this.isSoundEnabled) return;
+    
+    const sound = this.sounds.get(soundName);
+    if (sound) {
+      // Clone and play to allow overlapping sounds
+      const soundClone = sound.cloneNode() as HTMLAudioElement;
+      soundClone.volume = sound.volume;
+      soundClone.play().catch(err => {
+        // Silently fail if sound can't play
+        console.debug(`Could not play sound ${soundName}:`, err);
+      });
+    }
+  }
+
+  private toggleMusic(): void {
+    this.isMusicEnabled = !this.isMusicEnabled;
+    if (this.backgroundMusic) {
+      if (this.isMusicEnabled) {
+        this.backgroundMusic.play().catch(console.warn);
+      } else {
+        this.backgroundMusic.pause();
+      }
+    }
+  }
+
+  private toggleSounds(): void {
+    this.isSoundEnabled = !this.isSoundEnabled;
+  }
+
   public dispose(): void {
+    // Stop and cleanup audio
+    if (this.backgroundMusic) {
+      this.backgroundMusic.pause();
+      this.backgroundMusic = null;
+    }
+    this.sounds.clear();
+    
     // Clear meteor spawning interval
     if (this.meteorInterval !== null) {
       clearInterval(this.meteorInterval);
