@@ -1091,3 +1091,324 @@ h2 {
   }
 }
 
+/* ===== NEW GAME MECHANICS STYLES ===== */
+
+/* Resource UI */
+.resource-ui {
+  position: fixed;
+  top: 100px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 15px;
+  border-radius: 12px;
+  border: 2px solid rgba(138, 127, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 1500;
+  min-width: 200px;
+  backdrop-filter: blur(10px);
+  font-family: 'Courier New', monospace;
+}
+
+.resource-header {
+  font-size: 14px;
+  font-weight: bold;
+  color: #8a7fff;
+  margin-bottom: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.resource-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.resource-label {
+  color: #b8b8ff;
+}
+
+.fuel-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  margin: 0 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.fuel-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00ff00, #7fff00);
+  transition: width 0.3s ease;
+}
+
+.resource-divider {
+  height: 1px;
+  background: rgba(138, 127, 255, 0.3);
+  margin: 10px 0;
+}
+
+.resource-btn {
+  width: 100%;
+  padding: 8px;
+  margin: 5px 0;
+  background: linear-gradient(135deg, #6a5acd 0%, #8a7fff 100%);
+  border: none;
+  color: white;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.resource-btn:hover {
+  box-shadow: 0 0 15px rgba(138, 127, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+/* Mission Panel */
+.mission-panel {
+  position: fixed;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.95) 0%, rgba(45, 31, 74, 0.95) 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 15px;
+  border: 2px solid rgba(138, 127, 255, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  z-index: 3500;
+  max-width: 350px;
+  max-height: 80vh;
+  overflow-y: auto;
+  backdrop-filter: blur(15px);
+}
+
+.mission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(138, 127, 255, 0.3);
+}
+
+.mission-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #8a7fff;
+}
+
+.mission-content h4 {
+  color: #b8b8ff;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 15px 0 10px 0;
+}
+
+.mission-card {
+  background: rgba(138, 127, 255, 0.1);
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(138, 127, 255, 0.2);
+}
+
+.mission-card.completed {
+  background: rgba(0, 255, 0, 0.1);
+  border-color: rgba(0, 255, 0, 0.3);
+}
+
+.mission-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #8a7fff;
+  margin-bottom: 5px;
+}
+
+.mission-desc {
+  font-size: 13px;
+  color: #b8b8ff;
+  margin-bottom: 10px;
+}
+
+.mission-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6a5acd, #8a7fff);
+  transition: width 0.3s ease;
+}
+
+.mission-rewards {
+  font-size: 11px;
+  color: #ffd700;
+  font-style: italic;
+}
+
+/* Colony Panel */
+.colony-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.95) 0%, rgba(45, 31, 74, 0.95) 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 15px;
+  border: 2px solid rgba(138, 127, 255, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  z-index: 3500;
+  min-width: 400px;
+  max-width: 600px;
+  max-height: 70vh;
+  overflow-y: auto;
+  backdrop-filter: blur(15px);
+}
+
+.colony-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(138, 127, 255, 0.3);
+}
+
+.colony-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #8a7fff;
+}
+
+.colony-content {
+  padding: 10px 0;
+}
+
+.colony-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+  font-style: italic;
+}
+
+.colony-card {
+  background: rgba(138, 127, 255, 0.1);
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(138, 127, 255, 0.2);
+}
+
+.colony-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #8a7fff;
+  margin-bottom: 10px;
+}
+
+.colony-buildings {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.building {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #b8b8ff;
+  border: 1px solid rgba(138, 127, 255, 0.2);
+}
+
+.modal-close {
+  background: transparent;
+  border: 2px solid rgba(138, 127, 255, 0.4);
+  color: white;
+  font-size: 24px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  background: rgba(138, 127, 255, 0.3);
+  border-color: #8a7fff;
+  transform: rotate(90deg);
+}
+
+/* Spaceship Controls Help */
+.spaceship-help {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 15px;
+  border-radius: 10px;
+  border: 2px solid rgba(138, 127, 255, 0.3);
+  font-size: 11px;
+  z-index: 1500;
+  backdrop-filter: blur(10px);
+}
+
+.spaceship-help strong {
+  color: #8a7fff;
+  display: block;
+  margin-bottom: 5px;
+}
+
+/* Responsive adjustments for new UI */
+@media (max-width: 768px) {
+  .resource-ui {
+    top: 80px;
+    min-width: 180px;
+    font-size: 11px;
+  }
+  
+  .mission-panel {
+    right: 10px;
+    max-width: 90%;
+    transform: translateY(-50%) scale(0.9);
+  }
+  
+  .colony-panel {
+    min-width: 90%;
+    max-width: 95%;
+  }
+  
+  .colony-buildings {
+    grid-template-columns: 1fr;
+  }
+}
+

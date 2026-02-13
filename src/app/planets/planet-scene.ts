@@ -39,12 +39,17 @@ export interface PlanetData {
   orbitRadius?: number;
   orbitSpeed?: number;
   orbitAngle?: number;
-  actualRadius?: number; // Store actual radius for particle emitters
-  orbitInclination?: number; // Inclination angle for varied orbital planes
-  shape?: 'sphere' | 'cube' | 'torus' | 'octahedron' | 'dodecahedron' | 'icosahedron' | 'cylinder'; // Planet shape
-  discovered?: boolean; // Discovery status
-  discoveredAt?: number; // Timestamp of discovery
-  visitCount?: number; // How many times visited
+  actualRadius?: number;
+  orbitInclination?: number;
+  shape?: 'sphere' | 'cube' | 'torus' | 'octahedron' | 'dodecahedron' | 'icosahedron' | 'cylinder';
+  discovered?: boolean;
+  discoveredAt?: number;
+  visitCount?: number;
+  // New colony properties
+  hasColony?: boolean;
+  colonyBuildings?: ColonyBuilding[];
+  resourceType?: ResourceType;
+  resourceAmount?: number;
 }
 
 export interface Achievement {
@@ -54,6 +59,68 @@ export interface Achievement {
   icon: string;
   unlocked: boolean;
   unlockedAt?: number;
+}
+
+// New interfaces for game mechanics
+export interface SpaceshipData {
+  position: Vector3;
+  velocity: Vector3;
+  rotation: number;
+  fuel: number;
+  maxFuel: number;
+  speed: number;
+  discoveryRadius: number;
+  mesh?: Mesh;
+}
+
+export interface Resource {
+  type: ResourceType;
+  amount: number;
+}
+
+export enum ResourceType {
+  CRYSTAL = 'crystal',
+  MINERAL = 'mineral',
+  ENERGY = 'energy',
+  EXOTIC = 'exotic'
+}
+
+export interface ColonyBuilding {
+  type: BuildingType;
+  level: number;
+}
+
+export enum BuildingType {
+  REFUEL_STATION = 'refuel',
+  RESEARCH_LAB = 'research',
+  MINING_FACILITY = 'mining',
+  TELEPORTER = 'teleporter'
+}
+
+export interface Mission {
+  id: string;
+  title: string;
+  description: string;
+  type: MissionType;
+  target: number;
+  progress: number;
+  reward: Resource[];
+  completed: boolean;
+}
+
+export enum MissionType {
+  EXPLORE = 'explore',
+  COLLECT = 'collect',
+  COLONIZE = 'colonize',
+  DISCOVER = 'discover'
+}
+
+export interface AlienEncounter {
+  id: string;
+  type: 'friendly' | 'mysterious';
+  message: string;
+  planetId: string;
+  reward?: Resource[];
 }
 
 export interface GalaxyData {
@@ -151,6 +218,41 @@ export class PlanetScene {
   // Loading screen
   private loadingScreen: HTMLDivElement | null = null;
   private loadingProgress: number = 0;
+  
+  // NEW GAME MECHANICS
+  // Spaceship system
+  private spaceship: SpaceshipData | null = null;
+  private spaceshipMesh: Mesh | null = null;
+  private spaceshipTrail: ParticleSystem | null = null;
+  private isSpaceshipActive: boolean = true;
+  private spaceshipSpeed: number = 0.5;
+  private fuelConsumptionRate: number = 0.1;
+  
+  // Resource system
+  private playerResources: Map<ResourceType, number> = new Map([
+    [ResourceType.CRYSTAL, 0],
+    [ResourceType.MINERAL, 0],
+    [ResourceType.ENERGY, 0],
+    [ResourceType.EXOTIC, 0]
+  ]);
+  private resourceUI: HTMLDivElement | null = null;
+  
+  // Colony system
+  private colonies: Map<string, ColonyBuilding[]> = new Map();
+  private colonyUI: HTMLDivElement | null = null;
+  
+  // Mission system
+  private activeMissions: Mission[] = [];
+  private completedMissions: Mission[] = [];
+  private missionUI: HTMLDivElement | null = null;
+  
+  // Alien encounters
+  private alienEncounters: AlienEncounter[] = [];
+  private encounterUI: HTMLDivElement | null = null;
+  
+  // Wormhole system
+  private wormholes: Map<string, string> = new Map(); // Maps planet IDs
+  private wormholeMeshes: Map<string, Mesh> = new Map();
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -207,6 +309,13 @@ export class PlanetScene {
     this.setupInfoCard();
     this.setupDiscoverySystem();
     this.setupSearchPanel();
+    
+    // Setup NEW GAME MECHANICS
+    this.initializeSpaceship();
+    this.setupResourceUI();
+    this.setupMissionSystem();
+    this.setupColonyUI();
+    this.loadGameState(); // Load saved game progress
     
     this.updateLoadingProgress(100, 'Ready to explore!');
     
@@ -1940,20 +2049,98 @@ export class PlanetScene {
           }
           break;
         case 'ArrowUp':
-          // Zoom in
-          this.camera.radius = Math.max(this.camera.lowerRadiusLimit, this.camera.radius - 5);
+          // Move spaceship forward or zoom camera
+          if (this.isSpaceshipActive && this.spaceship) {
+            const forward = new Vector3(
+              Math.sin(this.spaceshipMesh?.rotation.y || 0),
+              0,
+              Math.cos(this.spaceshipMesh?.rotation.y || 0)
+            );
+            this.moveSpaceship(forward);
+          } else {
+            this.camera.radius = Math.max(this.camera.lowerRadiusLimit, this.camera.radius - 5);
+          }
           break;
         case 'ArrowDown':
-          // Zoom out
-          this.camera.radius = Math.min(this.camera.upperRadiusLimit, this.camera.radius + 5);
+          // Move spaceship backward or zoom out
+          if (this.isSpaceshipActive && this.spaceship) {
+            const backward = new Vector3(
+              -Math.sin(this.spaceshipMesh?.rotation.y || 0),
+              0,
+              -Math.cos(this.spaceshipMesh?.rotation.y || 0)
+            );
+            this.moveSpaceship(backward);
+          } else {
+            this.camera.radius = Math.min(this.camera.upperRadiusLimit, this.camera.radius + 5);
+          }
           break;
         case 'ArrowLeft':
-          // Rotate left
-          this.camera.alpha -= 0.1;
+          // Turn spaceship left or rotate camera
+          if (this.isSpaceshipActive && this.spaceship && this.spaceshipMesh) {
+            this.spaceshipMesh.rotation.y -= 0.1;
+          } else {
+            this.camera.alpha -= 0.1;
+          }
           break;
         case 'ArrowRight':
-          // Rotate right
-          this.camera.alpha += 0.1;
+          // Turn spaceship right or rotate camera
+          if (this.isSpaceshipActive && this.spaceship && this.spaceshipMesh) {
+            this.spaceshipMesh.rotation.y += 0.1;
+          } else {
+            this.camera.alpha += 0.1;
+          }
+          break;
+        case 'w':
+        case 'W':
+          // Spaceship up
+          if (this.isSpaceshipActive && this.spaceship) {
+            this.moveSpaceship(new Vector3(0, 1, 0));
+          }
+          break;
+        case 'x':
+        case 'X':
+          // Spaceship down
+          if (this.isSpaceshipActive && this.spaceship) {
+            this.moveSpaceship(new Vector3(0, -1, 0));
+          }
+          break;
+        case 'a':
+        case 'A':
+          // Strafe left
+          if (this.isSpaceshipActive && this.spaceship) {
+            const left = new Vector3(
+              -Math.cos(this.spaceshipMesh?.rotation.y || 0),
+              0,
+              Math.sin(this.spaceshipMesh?.rotation.y || 0)
+            );
+            this.moveSpaceship(left);
+          }
+          break;
+        case 'd':
+        case 'D':
+          // Strafe right
+          if (this.isSpaceshipActive && this.spaceship) {
+            const right = new Vector3(
+              Math.cos(this.spaceshipMesh?.rotation.y || 0),
+              0,
+              -Math.sin(this.spaceshipMesh?.rotation.y || 0)
+            );
+            this.moveSpaceship(right);
+          }
+          break;
+        case 'c':
+        case 'C':
+          // Establish colony on nearest planet
+          const nearest = this.findNearestPlanet();
+          if (nearest) {
+            this.establishColony(nearest);
+          }
+          break;
+        case 'v':
+        case 'V':
+          // Toggle spaceship mode
+          this.isSpaceshipActive = !this.isSpaceshipActive;
+          this.showNotification(this.isSpaceshipActive ? '🚀 Spaceship mode ON' : '👁️ Camera mode ON', 'info');
           break;
         case 'm':
         case 'M':
@@ -2599,6 +2786,28 @@ export class PlanetScene {
           this.playChord([523.25, 659.25, 783.99, 1046.5], 0.8, 0.25); // C-E-G-C
           break;
           
+        case 'collect':
+          // Collect resource - pleasant chime
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(800, now);
+          oscillator.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+          gainNode.gain.setValueAtTime(0.2, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+          oscillator.start(now);
+          oscillator.stop(now + 0.2);
+          break;
+          
+        case 'refuel':
+          // Refuel - whoosh sound
+          oscillator.type = 'sawtooth';
+          oscillator.frequency.setValueAtTime(200, now);
+          oscillator.frequency.exponentialRampToValueAtTime(600, now + 0.3);
+          gainNode.gain.setValueAtTime(0.15, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          oscillator.start(now);
+          oscillator.stop(now + 0.3);
+          break;
+          
         default:
           // Default - simple beep
           oscillator.type = 'sine';
@@ -2861,22 +3070,44 @@ export class PlanetScene {
   private showAchievementNotification(achievement: Achievement): void {
     const notification = document.createElement('div');
     notification.className = 'achievement-notification';
-    notification.innerHTML = `
-      <div class="achievement-header">🏆 Achievement Unlocked!</div>
-      <div class="achievement-content">
-        <div class="achievement-icon">${achievement.icon}</div>
-        <div class="achievement-details">
-          <strong>${achievement.name}</strong>
-          <span>${achievement.description}</span>
-        </div>
-      </div>
-    `;
+    
+    // Create elements programmatically for better control
+    const header = document.createElement('div');
+    header.className = 'achievement-header';
+    header.textContent = '🏆 Achievement Unlocked!';
+    
+    const content = document.createElement('div');
+    content.className = 'achievement-content';
+    
+    const icon = document.createElement('div');
+    icon.className = 'achievement-icon';
+    icon.textContent = achievement.icon;
+    
+    const details = document.createElement('div');
+    details.className = 'achievement-details';
+    
+    const name = document.createElement('strong');
+    name.textContent = achievement.name;
+    
+    const description = document.createElement('span');
+    description.textContent = achievement.description;
+    
+    details.appendChild(name);
+    details.appendChild(description);
+    content.appendChild(icon);
+    content.appendChild(details);
+    notification.appendChild(header);
+    notification.appendChild(content);
+    
     document.body.appendChild(notification);
     
-    setTimeout(() => notification.classList.add('show'), 10);
+    // Force reflow to ensure animation triggers
+    notification.offsetHeight;
+    
+    setTimeout(() => notification.classList.add('show'), 50);
     setTimeout(() => {
       notification.classList.remove('show');
-      setTimeout(() => notification.remove(), 300);
+      setTimeout(() => notification.remove(), 500);
     }, 5000);
   }
 
@@ -3536,6 +3767,686 @@ export class PlanetScene {
     }, 3000);
   }
 
+  // ===== NEW GAME MECHANICS =====
+  
+  private initializeSpaceship(): void {
+    // Create spaceship mesh
+    this.spaceshipMesh = MeshBuilder.CreateCylinder("spaceship", {
+      height: 2,
+      diameterTop: 0.3,
+      diameterBottom: 0.8,
+      tessellation: 6
+    }, this.scene);
+    
+    // Position spaceship near spawn point
+    this.spaceshipMesh.position = new Vector3(0, 0, 30);
+    this.spaceshipMesh.rotation.x = Math.PI / 2; // Point forward
+    
+    // Create spaceship material
+    const shipMaterial = new PBRMaterial("shipMaterial", this.scene);
+    shipMaterial.albedoColor = new Color3(0.8, 0.8, 1.0);
+    shipMaterial.metallic = 0.9;
+    shipMaterial.roughness = 0.2;
+    shipMaterial.emissiveColor = new Color3(0.2, 0.3, 0.5);
+    this.spaceshipMesh.material = shipMaterial;
+    
+    // Add glow effect
+    if (this.glowLayer) {
+      this.glowLayer.addIncludedOnlyMesh(this.spaceshipMesh);
+    }
+    
+    // Create trail effect
+    this.spaceshipTrail = new ParticleSystem("spaceshipTrail", 200, this.scene);
+    this.spaceshipTrail.particleTexture = new Texture("https://www.babylonjs-playground.com/textures/flare.png", this.scene);
+    this.spaceshipTrail.emitter = this.spaceshipMesh;
+    this.spaceshipTrail.minEmitBox = new Vector3(-0.2, -0.2, -1);
+    this.spaceshipTrail.maxEmitBox = new Vector3(0.2, 0.2, -1);
+    this.spaceshipTrail.color1 = new Color4(0.3, 0.5, 1.0, 1.0);
+    this.spaceshipTrail.color2 = new Color4(0.5, 0.7, 1.0, 0.5);
+    this.spaceshipTrail.colorDead = new Color4(0, 0, 0.2, 0.0);
+    this.spaceshipTrail.minSize = 0.3;
+    this.spaceshipTrail.maxSize = 0.6;
+    this.spaceshipTrail.minLifeTime = 0.3;
+    this.spaceshipTrail.maxLifeTime = 0.8;
+    this.spaceshipTrail.emitRate = 50;
+    this.spaceshipTrail.blendMode = ParticleSystem.BLENDMODE_ADD;
+    this.spaceshipTrail.gravity = new Vector3(0, 0, 0);
+    this.spaceshipTrail.minEmitPower = 0.5;
+    this.spaceshipTrail.maxEmitPower = 1;
+    this.spaceshipTrail.updateSpeed = 0.01;
+    this.spaceshipTrail.start();
+    
+    // Initialize spaceship data
+    this.spaceship = {
+      position: this.spaceshipMesh.position.clone(),
+      velocity: new Vector3(0, 0, 0),
+      rotation: 0,
+      fuel: 100,
+      maxFuel: 100,
+      speed: 0.5,
+      discoveryRadius: 15
+    };
+    
+    // Update camera to follow spaceship
+    this.camera.setTarget(this.spaceshipMesh.position);
+    this.camera.radius = 15;
+    
+    // Register spaceship movement in animation loop
+    this.scene.registerBeforeRender(() => {
+      this.updateSpaceship();
+    });
+  }
+
+  private updateSpaceship(): void {
+    if (!this.spaceship || !this.spaceshipMesh || !this.isSpaceshipActive) return;
+    
+    // Update spaceship position based on velocity
+    this.spaceship.position.addInPlace(this.spaceship.velocity);
+    this.spaceshipMesh.position.copyFrom(this.spaceship.position);
+    
+    // Apply drag to velocity
+    this.spaceship.velocity.scaleInPlace(0.98);
+    
+    // Update camera to follow spaceship
+    this.camera.setTarget(this.spaceship.position);
+    
+    // Check for nearby planets for resource collection
+    this.checkResourceCollection();
+    
+    // Check for nearby colonized planets for refueling
+    this.checkRefuelOpportunity();
+    
+    // Consume fuel based on movement
+    if (this.spaceship.velocity.length() > 0.01) {
+      this.spaceship.fuel = Math.max(0, this.spaceship.fuel - this.fuelConsumptionRate * 0.016);
+      this.updateResourceUI();
+    }
+  }
+
+  private moveSpaceship(direction: Vector3): void {
+    if (!this.spaceship || this.spaceship.fuel <= 0) {
+      this.showNotification('⛽ Out of fuel! Find a refueling station.', 'error');
+      return;
+    }
+    
+    const acceleration = direction.scale(this.spaceship.speed * 0.1);
+    this.spaceship.velocity.addInPlace(acceleration);
+    
+    // Limit max velocity
+    const maxVelocity = 2.0;
+    if (this.spaceship.velocity.length() > maxVelocity) {
+      this.spaceship.velocity.normalize().scaleInPlace(maxVelocity);
+    }
+    
+    // Point spaceship in movement direction
+    if (this.spaceshipMesh && this.spaceship.velocity.length() > 0.1) {
+      const angle = Math.atan2(this.spaceship.velocity.x, this.spaceship.velocity.z);
+      this.spaceshipMesh.rotation.y = angle;
+    }
+  }
+
+  private checkResourceCollection(): void {
+    if (!this.spaceship) return;
+    
+    this.planetDataMap.forEach((data, id) => {
+      const planet = this.planets.get(id);
+      if (planet && data.discovered && data.resourceType && data.resourceAmount && data.resourceAmount > 0) {
+        const distance = Vector3.Distance(this.spaceship!.position, planet.position);
+        
+        // Collect resources if close enough
+        if (distance < (data.size || 1) + 3) {
+          const collected = Math.min(data.resourceAmount, 5);
+          data.resourceAmount -= collected;
+          
+          const currentAmount = this.playerResources.get(data.resourceType) || 0;
+          this.playerResources.set(data.resourceType, currentAmount + collected);
+          
+          this.playSound('collect');
+          this.showNotification(`💎 Collected ${collected} ${data.resourceType}!`, 'success');
+          this.updateResourceUI();
+          
+          // Regenerate resources slowly
+          if (data.resourceAmount <= 0) {
+            setTimeout(() => {
+              data.resourceAmount = Math.floor(Math.random() * 20) + 10;
+            }, 60000); // Regenerate after 1 minute
+          }
+        }
+      }
+    });
+  }
+
+  private checkRefuelOpportunity(): void {
+    if (!this.spaceship || this.spaceship.fuel >= this.spaceship.maxFuel * 0.9) return;
+    
+    this.planetDataMap.forEach((data, id) => {
+      if (data.hasColony) {
+        const planet = this.planets.get(id);
+        if (planet) {
+          const distance = Vector3.Distance(this.spaceship!.position, planet.position);
+          
+          if (distance < (data.size || 1) + 5) {
+            const buildings = this.colonies.get(id) || [];
+            const hasRefuelStation = buildings.some(b => b.type === BuildingType.REFUEL_STATION);
+            
+            if (hasRefuelStation) {
+              this.spaceship!.fuel = this.spaceship!.maxFuel;
+              this.playSound('refuel');
+              this.showNotification('⛽ Ship refueled!', 'success');
+              this.updateResourceUI();
+            }
+          }
+        }
+      }
+    });
+  }
+
+  private setupResourceUI(): void {
+    this.resourceUI = document.createElement('div');
+    this.resourceUI.className = 'resource-ui';
+    this.resourceUI.innerHTML = `
+      <div class="resource-header">🚀 Spaceship Status</div>
+      <div class="resource-item">
+        <span class="resource-label">⛽ Fuel:</span>
+        <div class="fuel-bar">
+          <div class="fuel-fill" id="fuelFill"></div>
+        </div>
+        <span id="fuelValue">100/100</span>
+      </div>
+      <div class="resource-divider"></div>
+      <div class="resource-header">💎 Resources</div>
+      <div class="resource-item">
+        <span class="resource-label">💎 Crystal:</span>
+        <span id="crystalValue">0</span>
+      </div>
+      <div class="resource-item">
+        <span class="resource-label">⚙️ Mineral:</span>
+        <span id="mineralValue">0</span>
+      </div>
+      <div class="resource-item">
+        <span class="resource-label">⚡ Energy:</span>
+        <span id="energyValue">0</span>
+      </div>
+      <div class="resource-item">
+        <span class="resource-label">🌟 Exotic:</span>
+        <span id="exoticValue">0</span>
+      </div>
+      <div class="resource-divider"></div>
+      <button class="resource-btn" id="openMissionsBtn">📋 Missions</button>
+      <button class="resource-btn" id="openColonyBtn">🏗️ Colonies</button>
+    `;
+    document.body.appendChild(this.resourceUI);
+    
+    // Setup button handlers
+    document.getElementById('openMissionsBtn')?.addEventListener('click', () => this.showMissionUI());
+    document.getElementById('openColonyBtn')?.addEventListener('click', () => this.showColonyUI());
+    
+    this.updateResourceUI();
+  }
+
+  private updateResourceUI(): void {
+    if (!this.resourceUI || !this.spaceship) return;
+    
+    // Update fuel
+    const fuelPercent = (this.spaceship.fuel / this.spaceship.maxFuel) * 100;
+    const fuelFill = document.getElementById('fuelFill');
+    const fuelValue = document.getElementById('fuelValue');
+    if (fuelFill && fuelValue) {
+      fuelFill.style.width = `${fuelPercent}%`;
+      fuelValue.textContent = `${Math.floor(this.spaceship.fuel)}/${this.spaceship.maxFuel}`;
+      
+      // Color code fuel bar
+      if (fuelPercent > 50) {
+        fuelFill.style.background = 'linear-gradient(90deg, #00ff00, #7fff00)';
+      } else if (fuelPercent > 20) {
+        fuelFill.style.background = 'linear-gradient(90deg, #ffaa00, #ff8800)';
+      } else {
+        fuelFill.style.background = 'linear-gradient(90deg, #ff0000, #cc0000)';
+      }
+    }
+    
+    // Update resources
+    document.getElementById('crystalValue')!.textContent = (this.playerResources.get(ResourceType.CRYSTAL) || 0).toString();
+    document.getElementById('mineralValue')!.textContent = (this.playerResources.get(ResourceType.MINERAL) || 0).toString();
+    document.getElementById('energyValue')!.textContent = (this.playerResources.get(ResourceType.ENERGY) || 0).toString();
+    document.getElementById('exoticValue')!.textContent = (this.playerResources.get(ResourceType.EXOTIC) || 0).toString();
+  }
+
+  private setupMissionSystem(): void {
+    // Generate initial missions
+    this.activeMissions = [
+      {
+        id: 'mission_1',
+        title: 'First Steps',
+        description: 'Discover 3 planets',
+        type: MissionType.DISCOVER,
+        target: 3,
+        progress: 0,
+        reward: [
+          { type: ResourceType.CRYSTAL, amount: 50 },
+          { type: ResourceType.ENERGY, amount: 25 }
+        ],
+        completed: false
+      },
+      {
+        id: 'mission_2',
+        title: 'Resource Gatherer',
+        description: 'Collect 100 total resources',
+        type: MissionType.COLLECT,
+        target: 100,
+        progress: 0,
+        reward: [
+          { type: ResourceType.MINERAL, amount: 75 }
+        ],
+        completed: false
+      },
+      {
+        id: 'mission_3',
+        title: 'Colony Builder',
+        description: 'Establish 2 colonies',
+        type: MissionType.COLONIZE,
+        target: 2,
+        progress: 0,
+        reward: [
+          { type: ResourceType.EXOTIC, amount: 10 },
+          { type: ResourceType.CRYSTAL, amount: 100 }
+        ],
+        completed: false
+      }
+    ];
+    
+    // Check mission progress periodically
+    setInterval(() => this.checkMissionProgress(), 5000);
+  }
+
+  private checkMissionProgress(): void {
+    this.activeMissions.forEach(mission => {
+      if (mission.completed) return;
+      
+      switch (mission.type) {
+        case MissionType.DISCOVER:
+          const discovered = Array.from(this.planetDataMap.values()).filter(p => p.discovered).length;
+          mission.progress = discovered;
+          break;
+          
+        case MissionType.COLLECT:
+          const totalResources = Array.from(this.playerResources.values()).reduce((sum, val) => sum + val, 0);
+          mission.progress = totalResources;
+          break;
+          
+        case MissionType.COLONIZE:
+          mission.progress = this.colonies.size;
+          break;
+      }
+      
+      // Check if mission completed
+      if (mission.progress >= mission.target && !mission.completed) {
+        this.completeMission(mission);
+      }
+    });
+  }
+
+  private completeMission(mission: Mission): void {
+    mission.completed = true;
+    this.completedMissions.push(mission);
+    
+    // Award rewards
+    mission.reward.forEach(reward => {
+      const current = this.playerResources.get(reward.type) || 0;
+      this.playerResources.set(reward.type, current + reward.amount);
+    });
+    
+    this.playSound('achievement');
+    this.showNotification(`🎉 Mission Complete: ${mission.title}`, 'success');
+    this.updateResourceUI();
+    
+    // Generate new mission
+    setTimeout(() => this.generateNewMission(), 2000);
+  }
+
+  private generateNewMission(): void {
+    const missionTypes = [MissionType.DISCOVER, MissionType.COLLECT, MissionType.COLONIZE, MissionType.EXPLORE];
+    const type = missionTypes[Math.floor(Math.random() * missionTypes.length)];
+    
+    const missions = {
+      [MissionType.DISCOVER]: {
+        titles: ['Planet Hunter', 'Explorer', 'Star Seeker'],
+        descriptions: ['Discover # planets', 'Find # new worlds', 'Explore # systems'],
+        targets: [5, 8, 10, 15]
+      },
+      [MissionType.COLLECT]: {
+        titles: ['Resource Collector', 'Miner', 'Prospector'],
+        descriptions: ['Collect # resources', 'Gather # materials', 'Mine # units'],
+        targets: [200, 300, 500, 750]
+      },
+      [MissionType.COLONIZE]: {
+        titles: ['Empire Builder', 'Colonizer', 'Settler'],
+        descriptions: ['Establish # colonies', 'Build # outposts', 'Colonize # worlds'],
+        targets: [3, 5, 8]
+      },
+      [MissionType.EXPLORE]: {
+        titles: ['Traveler', 'Voyager', 'Navigator'],
+        descriptions: ['Visit # galaxies', 'Explore # systems', 'Travel to # sectors'],
+        targets: [3, 4, 5, 6]
+      }
+    };
+    
+    const config = missions[type];
+    const titleIndex = Math.floor(Math.random() * config.titles.length);
+    const target = config.targets[Math.floor(Math.random() * config.targets.length)];
+    
+    const newMission: Mission = {
+      id: `mission_${Date.now()}`,
+      title: config.titles[titleIndex],
+      description: config.descriptions[titleIndex].replace('#', target.toString()),
+      type,
+      target,
+      progress: 0,
+      reward: this.generateMissionReward(target),
+      completed: false
+    };
+    
+    this.activeMissions.push(newMission);
+    this.showNotification(`📋 New Mission: ${newMission.title}`, 'info');
+  }
+
+  private generateMissionReward(target: number): Resource[] {
+    const rewards: Resource[] = [];
+    const rewardAmount = target * 10;
+    
+    const types = [ResourceType.CRYSTAL, ResourceType.MINERAL, ResourceType.ENERGY, ResourceType.EXOTIC];
+    const numRewards = Math.floor(Math.random() * 2) + 1;
+    
+    for (let i = 0; i < numRewards; i++) {
+      const type = types[Math.floor(Math.random() * types.length)];
+      rewards.push({ type, amount: Math.floor(rewardAmount * (0.5 + Math.random() * 0.5)) });
+    }
+    
+    return rewards;
+  }
+
+  private showMissionUI(): void {
+    if (!this.missionUI) {
+      this.missionUI = document.createElement('div');
+      this.missionUI.className = 'mission-panel';
+      document.body.appendChild(this.missionUI);
+    }
+    
+    let html = `
+      <div class="mission-header">
+        <h3>📋 Missions</h3>
+        <button class="modal-close" id="closeMissionsBtn">×</button>
+      </div>
+      <div class="mission-content">
+        <h4>Active Missions</h4>
+    `;
+    
+    this.activeMissions.filter(m => !m.completed).forEach(mission => {
+      const progress = Math.floor((mission.progress / mission.target) * 100);
+      html += `
+        <div class="mission-card">
+          <div class="mission-title">${mission.title}</div>
+          <div class="mission-desc">${mission.description}</div>
+          <div class="mission-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${progress}%"></div>
+            </div>
+            <span>${mission.progress}/${mission.target}</span>
+          </div>
+          <div class="mission-rewards">
+            Rewards: ${mission.reward.map(r => `${r.amount} ${r.type}`).join(', ')}
+          </div>
+        </div>
+      `;
+    });
+    
+    html += `
+        <h4>Completed (${this.completedMissions.length})</h4>
+        ${this.completedMissions.slice(-3).reverse().map(m => `
+          <div class="mission-card completed">
+            <div class="mission-title">✅ ${m.title}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    
+    this.missionUI.innerHTML = html;
+    this.missionUI.style.display = 'block';
+    
+    document.getElementById('closeMissionsBtn')?.addEventListener('click', () => {
+      if (this.missionUI) this.missionUI.style.display = 'none';
+    });
+  }
+
+  private setupColonyUI(): void {
+    // Colony UI will be shown when clicking on discovered planets
+  }
+
+  private showColonyUI(): void {
+    // Show list of all colonies
+    if (!this.colonyUI) {
+      this.colonyUI = document.createElement('div');
+      this.colonyUI.className = 'colony-panel';
+      document.body.appendChild(this.colonyUI);
+    }
+    
+    let html = `
+      <div class="colony-header">
+        <h3>🏗️ Colonies</h3>
+        <button class="modal-close" id="closeColoniesBtn">×</button>
+      </div>
+      <div class="colony-content">
+    `;
+    
+    if (this.colonies.size === 0) {
+      html += `<div class="colony-empty">No colonies established yet. Discover planets and establish colonies!</div>`;
+    } else {
+      this.colonies.forEach((buildings, planetId) => {
+        const planetData = this.planetDataMap.get(planetId);
+        if (planetData) {
+          html += `
+            <div class="colony-card">
+              <div class="colony-name">${planetData.name}</div>
+              <div class="colony-buildings">
+                ${buildings.map(b => `<div class="building">${this.getBuildingIcon(b.type)} ${b.type} Lv.${b.level}</div>`).join('')}
+              </div>
+            </div>
+          `;
+        }
+      });
+    }
+    
+    html += `</div>`;
+    this.colonyUI.innerHTML = html;
+    this.colonyUI.style.display = 'block';
+    
+    document.getElementById('closeColoniesBtn')?.addEventListener('click', () => {
+      if (this.colonyUI) this.colonyUI.style.display = 'none';
+    });
+  }
+
+  private getBuildingIcon(type: BuildingType): string {
+    const icons = {
+      [BuildingType.REFUEL_STATION]: '⛽',
+      [BuildingType.RESEARCH_LAB]: '🔬',
+      [BuildingType.MINING_FACILITY]: '⛏️',
+      [BuildingType.TELEPORTER]: '🌀'
+    };
+    return icons[type] || '🏢';
+  }
+
+  private establishColony(planetId: string): void {
+    const planetData = this.planetDataMap.get(planetId);
+    if (!planetData || !planetData.discovered) {
+      this.showNotification('❌ Must discover planet first!', 'error');
+      return;
+    }
+    
+    if (planetData.hasColony) {
+      this.showNotification('ℹ️ Colony already exists here!', 'info');
+      return;
+    }
+    
+    // Check if player has resources
+    const cost = {
+      [ResourceType.CRYSTAL]: 50,
+      [ResourceType.MINERAL]: 75,
+      [ResourceType.ENERGY]: 25
+    };
+    
+    for (const [type, amount] of Object.entries(cost)) {
+      const resourceType = type as ResourceType;
+      const current = this.playerResources.get(resourceType) || 0;
+      if (current < amount) {
+        this.showNotification(`❌ Need ${amount} ${resourceType}!`, 'error');
+        return;
+      }
+    }
+    
+    // Deduct resources
+    for (const [type, amount] of Object.entries(cost)) {
+      const resourceType = type as ResourceType;
+      const current = this.playerResources.get(resourceType) || 0;
+      this.playerResources.set(resourceType, current - amount);
+    }
+    
+    // Establish colony
+    planetData.hasColony = true;
+    const initialBuildings: ColonyBuilding[] = [
+      { type: BuildingType.REFUEL_STATION, level: 1 }
+    ];
+    this.colonies.set(planetId, initialBuildings);
+    
+    // Add visual indicator
+    this.addColonyIndicator(planetId);
+    
+    this.playSound('achievement');
+    this.showNotification(`🏗️ Colony established on ${planetData.name}!`, 'success');
+    this.updateResourceUI();
+    this.saveGameState();
+  }
+
+  private addColonyIndicator(planetId: string): void {
+    const planet = this.planets.get(planetId);
+    if (!planet) return;
+    
+    // Create a flag/beacon above the planet
+    const beacon = MeshBuilder.CreateCylinder(`colony_${planetId}`, {
+      height: 1,
+      diameter: 0.3
+    }, this.scene);
+    
+    beacon.position = planet.position.clone();
+    beacon.position.y += (this.planetDataMap.get(planetId)?.size || 1) + 1;
+    
+    const beaconMat = new StandardMaterial(`beaconMat_${planetId}`, this.scene);
+    beaconMat.emissiveColor = new Color3(0, 1, 0);
+    beacon.material = beaconMat;
+    
+    if (this.glowLayer) {
+      this.glowLayer.addIncludedOnlyMesh(beacon);
+    }
+    
+    // Make it pulse
+    this.scene.registerBeforeRender(() => {
+      beacon.position.y = planet.position.y + (this.planetDataMap.get(planetId)?.size || 1) + 1 + Math.sin(Date.now() * 0.001) * 0.3;
+    });
+  }
+
+  private assignResourcesToPlanets(): void {
+    // Assign random resources to planets
+    const types = [ResourceType.CRYSTAL, ResourceType.MINERAL, ResourceType.ENERGY, ResourceType.EXOTIC];
+    
+    this.planetDataMap.forEach((data, id) => {
+      if (!data.resourceType) {
+        data.resourceType = types[Math.floor(Math.random() * types.length)];
+        data.resourceAmount = Math.floor(Math.random() * 50) + 20;
+      }
+    });
+  }
+
+  private loadGameState(): void {
+    // Load spaceship state
+    const shipState = localStorage.getItem('spaceshipState');
+    if (shipState && this.spaceship) {
+      const saved = JSON.parse(shipState);
+      this.spaceship.fuel = saved.fuel || 100;
+      this.spaceship.maxFuel = saved.maxFuel || 100;
+      this.spaceship.speed = saved.speed || 0.5;
+    }
+    
+    // Load resources
+    const resources = localStorage.getItem('playerResources');
+    if (resources) {
+      const saved = JSON.parse(resources);
+      Object.entries(saved).forEach(([type, amount]) => {
+        this.playerResources.set(type as ResourceType, amount as number);
+      });
+    }
+    
+    // Load colonies
+    const colonies = localStorage.getItem('colonies');
+    if (colonies) {
+      const saved = JSON.parse(colonies);
+      Object.entries(saved).forEach(([planetId, buildings]) => {
+        this.colonies.set(planetId, buildings as ColonyBuilding[]);
+        const planetData = this.planetDataMap.get(planetId);
+        if (planetData) {
+          planetData.hasColony = true;
+          this.addColonyIndicator(planetId);
+        }
+      });
+    }
+    
+    // Assign resources to planets
+    this.assignResourcesToPlanets();
+  }
+
+  private saveGameState(): void {
+    // Save spaceship state
+    if (this.spaceship) {
+      localStorage.setItem('spaceshipState', JSON.stringify({
+        fuel: this.spaceship.fuel,
+        maxFuel: this.spaceship.maxFuel,
+        speed: this.spaceship.speed
+      }));
+    }
+    
+    // Save resources
+    const resources: any = {};
+    this.playerResources.forEach((amount, type) => {
+      resources[type] = amount;
+    });
+    localStorage.setItem('playerResources', JSON.stringify(resources));
+    
+    // Save colonies
+    const colonies: any = {};
+    this.colonies.forEach((buildings, planetId) => {
+      colonies[planetId] = buildings;
+    });
+    localStorage.setItem('colonies', JSON.stringify(colonies));
+  }
+
+  private findNearestPlanet(): string | null {
+    if (!this.spaceship) return null;
+    
+    let nearestId: string | null = null;
+    let nearestDistance = Infinity;
+    
+    this.planetDataMap.forEach((data, id) => {
+      const planet = this.planets.get(id);
+      if (planet && data.discovered) {
+        const distance = Vector3.Distance(this.spaceship!.position, planet.position);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestId = id;
+        }
+      }
+    });
+    
+    return nearestId;
+  }
+
   public dispose(): void {
     // Stop tour if active
     this.stopTour();
@@ -3565,6 +4476,25 @@ export class PlanetScene {
       this.loadingScreen.parentNode.removeChild(this.loadingScreen);
       this.loadingScreen = null;
     }
+    
+    // Cleanup new game mechanic UIs
+    if (this.resourceUI && this.resourceUI.parentNode) {
+      this.resourceUI.parentNode.removeChild(this.resourceUI);
+      this.resourceUI = null;
+    }
+    
+    if (this.missionUI && this.missionUI.parentNode) {
+      this.missionUI.parentNode.removeChild(this.missionUI);
+      this.missionUI = null;
+    }
+    
+    if (this.colonyUI && this.colonyUI.parentNode) {
+      this.colonyUI.parentNode.removeChild(this.colonyUI);
+      this.colonyUI = null;
+    }
+    
+    // Save game state before disposing
+    this.saveGameState();
     
     // Stop and cleanup audio
     if (this.backgroundMusic) {
