@@ -3,15 +3,20 @@
   <div id="planetModal" class="modal" style="display: none;">
     <div class="modal-content">
       <span class="close">&times;</span>
-      <h2>Edit Planet</h2>
+      <h2>✨ Edit Planet ✨</h2>
+      <p style="text-align: center; color: #8a7fff; margin-top: -5px; margin-bottom: 25px; font-size: 14px; font-style: italic;">Customize your cosmic world</p>
       <form id="planetForm">
-        <label for="planetName">Planet Name:</label>
-        <input type="text" id="planetName" name="planetName" required>
+        <div>
+          <label for="planetName">🌍 Planet Name</label>
+          <input type="text" id="planetName" name="planetName" required placeholder="Enter planet name...">
+        </div>
         
-        <label for="planetDescription">Description:</label>
-        <textarea id="planetDescription" name="planetDescription" rows="4" required></textarea>
+        <div>
+          <label for="planetDescription">📝 Description</label>
+          <textarea id="planetDescription" name="planetDescription" rows="4" required placeholder="Describe your planet's unique features..."></textarea>
+        </div>
         
-        <button type="submit">Save Planet</button>
+        <button type="submit">🚀 Save Planet</button>
       </form>
     </div>
   </div>
