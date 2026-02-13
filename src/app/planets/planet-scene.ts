@@ -232,14 +232,23 @@ export class PlanetScene {
           // Update orbit angle
           data.orbitAngle += data.orbitSpeed;
           
-          // Calculate new position with inclination
+          // Calculate new position to match the tilted orbit path
+          // The orbit path (torus) is rotated around X-axis by inclination
           const inclination = data.orbitInclination || 0;
-          planet.position.x = Math.cos(data.orbitAngle) * data.orbitRadius;
-          planet.position.z = Math.sin(data.orbitAngle) * data.orbitRadius;
-          planet.position.y = Math.sin(data.orbitAngle) * data.orbitRadius * Math.sin(inclination);
+          
+          // Base circular motion in XZ plane
+          const x = Math.cos(data.orbitAngle) * data.orbitRadius;
+          const z = Math.sin(data.orbitAngle) * data.orbitRadius;
+          
+          // Apply inclination rotation to match the tilted torus
+          // When torus is rotated by inclination around X-axis:
+          // The Z-coordinate gets split into Y and Z components
+          planet.position.x = x;
+          planet.position.z = z * Math.cos(inclination);
+          planet.position.y = z * Math.sin(inclination);
           
           // Planet self-rotation - slower for cozy vibe
-          planet.rotation.y += 0.002; // Reduced from 0.01 for gentler rotation
+          planet.rotation.y += 0.002;
         }
       });
       
@@ -700,7 +709,7 @@ export class PlanetScene {
     ctx.fillStyle = baseColor;
     ctx.fillRect(0, 0, 1024, 1024);
     
-    // Add surface variation based on planet type
+    // Add artistic variations for all planets - more detailed and unique
     switch(planetName) {
       case "Mercury":
         // Rocky surface with craters
@@ -733,6 +742,31 @@ export class PlanetScene {
       case "Neptune":
         // Deep blue with storm spots
         this.addStormSpots(ctx);
+        break;
+      default:
+        // For new galaxies' planets, add unique artistic patterns
+        if (planetName.includes('Crystalia') || planetName.includes('Prisma')) {
+          // Crystalline pattern
+          this.addCrystalPattern(ctx, baseColor);
+        } else if (planetName.includes('Luminos') || planetName.includes('Celestia')) {
+          // Glowing energy pattern
+          this.addEnergyPattern(ctx, baseColor);
+        } else if (planetName.includes('Pyros') || planetName.includes('Magmara') || planetName.includes('Blazeon')) {
+          // Lava/fire pattern
+          this.addLavaPattern(ctx, baseColor);
+        } else if (planetName.includes('Neptara') || planetName.includes('Tidalis') || planetName.includes('Marinius')) {
+          // Water/ocean pattern
+          this.addWaterPattern(ctx, baseColor);
+        } else if (planetName.includes('Floralis') || planetName.includes('Junglios') || planetName.includes('Vineworld')) {
+          // Organic/vegetation pattern
+          this.addVegetationPattern(ctx, baseColor);
+        } else if (planetName.includes('Cubix') || planetName.includes('Octara') || planetName.includes('Dodeca') || planetName.includes('Icosa')) {
+          // Geometric/tech pattern
+          this.addTechPattern(ctx, baseColor);
+        } else {
+          // Default artistic pattern - swirls and textures
+          this.addArtisticSwirls(ctx, baseColor);
+        }
         break;
     }
     
@@ -865,6 +899,214 @@ export class PlanetScene {
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
+    }
+  }
+
+  private addCrystalPattern(ctx: CanvasRenderingContext2D, baseColor: string): void {
+    // Create crystalline facets
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * 1024;
+      const y = Math.random() * 1024;
+      const size = Math.random() * 60 + 30;
+      const sides = Math.floor(Math.random() * 3) + 5; // 5-7 sides
+      
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.random() * Math.PI * 2);
+      ctx.beginPath();
+      for (let j = 0; j < sides; j++) {
+        const angle = (j * Math.PI * 2) / sides;
+        const px = Math.cos(angle) * size;
+        const py = Math.sin(angle) * size;
+        if (j === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.3 + 0.1})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(200, 200, 255, ${Math.random() * 0.5 + 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  private addEnergyPattern(ctx: CanvasRenderingContext2D, baseColor: string): void {
+    // Create glowing energy streams
+    for (let i = 0; i < 20; i++) {
+      ctx.beginPath();
+      const startX = Math.random() * 1024;
+      const startY = Math.random() * 1024;
+      ctx.moveTo(startX, startY);
+      
+      // Create wavy line
+      for (let j = 0; j < 10; j++) {
+        const x = startX + (j * 100) + (Math.random() - 0.5) * 50;
+        const y = startY + (Math.random() - 0.5) * 200;
+        ctx.lineTo(x, y);
+      }
+      
+      ctx.strokeStyle = `rgba(255, 255, 100, ${Math.random() * 0.4 + 0.2})`;
+      ctx.lineWidth = Math.random() * 4 + 2;
+      ctx.stroke();
+      
+      // Add glow
+      ctx.strokeStyle = `rgba(255, 255, 200, ${Math.random() * 0.2 + 0.1})`;
+      ctx.lineWidth = Math.random() * 8 + 4;
+      ctx.stroke();
+    }
+  }
+
+  private addLavaPattern(ctx: CanvasRenderingContext2D, baseColor: string): void {
+    // Create lava flows and cracks
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * 1024;
+      const y = Math.random() * 1024;
+      const length = Math.random() * 200 + 100;
+      const angle = Math.random() * Math.PI * 2;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      
+      // Create branching cracks
+      for (let j = 0; j < 5; j++) {
+        const dx = Math.cos(angle + (Math.random() - 0.5) * 0.5) * (length / 5);
+        const dy = Math.sin(angle + (Math.random() - 0.5) * 0.5) * (length / 5);
+        ctx.lineTo(x + dx * j, y + dy * j);
+      }
+      
+      ctx.strokeStyle = `rgba(255, ${100 + Math.random() * 50}, 0, ${Math.random() * 0.6 + 0.3})`;
+      ctx.lineWidth = Math.random() * 3 + 1;
+      ctx.stroke();
+    }
+  }
+
+  private addWaterPattern(ctx: CanvasRenderingContext2D, baseColor: string): void {
+    // Create wave patterns
+    for (let i = 0; i < 25; i++) {
+      const y = Math.random() * 1024;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      
+      // Create wave
+      for (let x = 0; x <= 1024; x += 20) {
+        const wave = Math.sin((x + i * 50) * 0.01) * 10;
+        ctx.lineTo(x, y + wave);
+      }
+      
+      ctx.strokeStyle = `rgba(255, 255, 255, ${Math.random() * 0.2 + 0.05})`;
+      ctx.lineWidth = Math.random() * 2 + 1;
+      ctx.stroke();
+    }
+    
+    // Add ripples
+    for (let i = 0; i < 15; i++) {
+      const x = Math.random() * 1024;
+      const y = Math.random() * 1024;
+      const maxRadius = Math.random() * 40 + 20;
+      
+      for (let r = 5; r < maxRadius; r += 8) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.3 - (r / maxRadius) * 0.3})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  private addVegetationPattern(ctx: CanvasRenderingContext2D, baseColor: string): void {
+    // Create organic, leafy patterns
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * 1024;
+      const y = Math.random() * 1024;
+      const size = Math.random() * 40 + 20;
+      
+      // Draw leaf-like shapes
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.random() * Math.PI * 2);
+      
+      ctx.beginPath();
+      ctx.moveTo(0, -size);
+      ctx.quadraticCurveTo(size * 0.6, -size * 0.5, size * 0.3, 0);
+      ctx.quadraticCurveTo(size * 0.6, size * 0.5, 0, size);
+      ctx.quadraticCurveTo(-size * 0.6, size * 0.5, -size * 0.3, 0);
+      ctx.quadraticCurveTo(-size * 0.6, -size * 0.5, 0, -size);
+      
+      ctx.fillStyle = `rgba(${50 + Math.random() * 100}, ${150 + Math.random() * 105}, ${50 + Math.random() * 100}, ${Math.random() * 0.4 + 0.2})`;
+      ctx.fill();
+      
+      ctx.restore();
+    }
+  }
+
+  private addTechPattern(ctx: CanvasRenderingContext2D, baseColor: string): void {
+    // Create circuit-like technological patterns
+    ctx.strokeStyle = `rgba(100, 200, 255, 0.4)`;
+    ctx.lineWidth = 2;
+    
+    // Grid lines
+    for (let i = 0; i < 1024; i += 64) {
+      // Vertical lines
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 1024);
+      ctx.stroke();
+      
+      // Horizontal lines
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(1024, i);
+      ctx.stroke();
+    }
+    
+    // Circuit nodes
+    for (let i = 0; i < 30; i++) {
+      const x = Math.floor(Math.random() * 16) * 64;
+      const y = Math.floor(Math.random() * 16) * 64;
+      const size = Math.random() * 10 + 5;
+      
+      ctx.fillStyle = `rgba(100, 255, 255, ${Math.random() * 0.6 + 0.3})`;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Connecting lines
+      const connections = Math.floor(Math.random() * 3) + 1;
+      for (let j = 0; j < connections; j++) {
+        const targetX = Math.floor(Math.random() * 16) * 64;
+        const targetY = Math.floor(Math.random() * 16) * 64;
+        ctx.strokeStyle = `rgba(100, 200, 255, ${Math.random() * 0.3 + 0.2})`;
+        ctx.lineWidth = Math.random() * 2 + 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(targetX, targetY);
+        ctx.stroke();
+      }
+    }
+  }
+
+  private addArtisticSwirls(ctx: CanvasRenderingContext2D, baseColor: string): void {
+    // Create artistic swirls and patterns
+    for (let i = 0; i < 15; i++) {
+      const centerX = Math.random() * 1024;
+      const centerY = Math.random() * 1024;
+      const spirals = Math.floor(Math.random() * 3) + 2;
+      
+      ctx.beginPath();
+      for (let angle = 0; angle < Math.PI * 4; angle += 0.1) {
+        const radius = angle * 10;
+        const x = centerX + Math.cos(angle * spirals) * radius;
+        const y = centerY + Math.sin(angle * spirals) * radius;
+        
+        if (angle === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      
+      ctx.strokeStyle = `rgba(255, 255, 255, ${Math.random() * 0.2 + 0.1})`;
+      ctx.lineWidth = Math.random() * 3 + 1;
+      ctx.stroke();
     }
   }
 
@@ -1141,9 +1383,18 @@ export class PlanetScene {
       this.scene
     );
     plane.parent = planet;
-    plane.position = new Vector3(0, -2, 0);
+    
+    // Position label above and slightly in front of planet to avoid occlusion
+    // Scale position based on planet size to ensure visibility
+    const planetSize = planet.scaling.x || 1;
+    const offset = Math.max(2.5, planetSize * 1.5); // Larger offset for bigger planets
+    plane.position = new Vector3(0, offset, 1);
+    
     plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     plane.isPickable = false; // Don't block planet picking
+    
+    // Render label on top by setting render order
+    plane.renderingGroupId = 1; // Higher rendering group to draw on top
 
     // Create dynamic texture for text
     const texture = new DynamicTexture(
@@ -1154,10 +1405,19 @@ export class PlanetScene {
     );
     texture.hasAlpha = true;
 
-    // Draw text
+    // Draw text with semi-transparent background
     const ctx = texture.getContext() as CanvasRenderingContext2D;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    
+    // Background with rounded corners effect
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
     ctx.fillRect(0, 0, 512, 128);
+    
+    // Add border for better visibility
+    ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 508, 124);
+    
+    // Draw text
     ctx.font = 'bold 48px Arial';
     ctx.fillStyle = 'white';
     ctx.textAlign = 'center';
@@ -1171,6 +1431,7 @@ export class PlanetScene {
     material.opacityTexture = texture;
     material.emissiveColor = new Color3(1, 1, 1);
     material.backFaceCulling = false;
+    material.disableDepthWrite = false; // Enable depth testing but still visible
     plane.material = material;
   }
 
@@ -1330,14 +1591,14 @@ export class PlanetScene {
       sunColor: '#FFA500',
       sunSize: 8,
       planets: [
-        { name: "Mercury", description: "Closest to the sun", color: "#E8B4A0", size: 1.8, orbitRadius: 15, speed: 0.002, inclination: 0.12 },
-        { name: "Venus", description: "The morning star", color: "#FFB84D", size: 2.3, orbitRadius: 22, speed: 0.0016, inclination: 0.06 },
+        { name: "Mercury", description: "Closest to the sun", color: "#E8B4A0", size: 1.8, orbitRadius: 15, speed: 0.002, inclination: 0.25 },
+        { name: "Venus", description: "The morning star", color: "#FFB84D", size: 2.3, orbitRadius: 22, speed: 0.0016, inclination: 0.15 },
         { name: "Earth", description: "Our home", color: "#4A9EFF", size: 2.5, orbitRadius: 30, speed: 0.0013, inclination: 0 },
-        { name: "Mars", description: "The red planet", color: "#FF6B4D", size: 2.0, orbitRadius: 38, speed: 0.0010, inclination: 0.03 },
-        { name: "Jupiter", description: "Gas giant", color: "#FFD700", size: 4.5, orbitRadius: 55, speed: 0.0007, inclination: 0.02 },
-        { name: "Saturn", description: "Ringed beauty", color: "#FFE4B5", size: 4.0, orbitRadius: 70, speed: 0.0005, inclination: 0.04 },
-        { name: "Uranus", description: "Ice giant", color: "#87CEEB", size: 3.2, orbitRadius: 85, speed: 0.0004, inclination: 0.013 },
-        { name: "Neptune", description: "Deep blue", color: "#4169FF", size: 3.0, orbitRadius: 100, speed: 0.0003, inclination: 0.03 }
+        { name: "Mars", description: "The red planet", color: "#FF6B4D", size: 2.0, orbitRadius: 38, speed: 0.0010, inclination: 0.12 },
+        { name: "Jupiter", description: "Gas giant", color: "#FFD700", size: 4.5, orbitRadius: 55, speed: 0.0007, inclination: 0.08 },
+        { name: "Saturn", description: "Ringed beauty", color: "#FFE4B5", size: 4.0, orbitRadius: 70, speed: 0.0005, inclination: 0.18 },
+        { name: "Uranus", description: "Ice giant", color: "#87CEEB", size: 3.2, orbitRadius: 85, speed: 0.0004, inclination: 0.06 },
+        { name: "Neptune", description: "Deep blue", color: "#4169FF", size: 3.0, orbitRadius: 100, speed: 0.0003, inclination: 0.14 }
       ]
     });
 
@@ -1349,12 +1610,12 @@ export class PlanetScene {
       sunColor: '#00FFFF',
       sunSize: 10,
       planets: [
-        { name: "Crystalia", description: "A world of pure crystal", color: "#E0BBE4", size: 2.0, orbitRadius: 20, speed: 0.0025, inclination: 0.15 },
-        { name: "Luminos", description: "Glowing with ethereal light", color: "#FFD700", size: 2.8, orbitRadius: 28, speed: 0.002, inclination: 0.08 },
-        { name: "Nebulae", description: "Wrapped in colorful mists", color: "#FF69B4", size: 3.5, orbitRadius: 40, speed: 0.0015, inclination: 0.05 },
-        { name: "Prisma", description: "Refracts starlight beautifully", color: "#7FFFD4", size: 2.2, orbitRadius: 52, speed: 0.0012, inclination: 0.1 },
-        { name: "Celestia", description: "Home to ancient star beings", color: "#DDA0DD", size: 4.0, orbitRadius: 68, speed: 0.0008, inclination: 0.07 },
-        { name: "Auroris", description: "Dancing aurora skies", color: "#00FF7F", size: 3.0, orbitRadius: 85, speed: 0.0006, inclination: 0.12 }
+        { name: "Crystalia", description: "A world of pure crystal", color: "#E0BBE4", size: 2.0, orbitRadius: 20, speed: 0.0025, inclination: 0.3 },
+        { name: "Luminos", description: "Glowing with ethereal light", color: "#FFD700", size: 2.8, orbitRadius: 28, speed: 0.002, inclination: 0.18 },
+        { name: "Nebulae", description: "Wrapped in colorful mists", color: "#FF69B4", size: 3.5, orbitRadius: 40, speed: 0.0015, inclination: 0.12 },
+        { name: "Prisma", description: "Refracts starlight beautifully", color: "#7FFFD4", size: 2.2, orbitRadius: 52, speed: 0.0012, inclination: 0.22 },
+        { name: "Celestia", description: "Home to ancient star beings", color: "#DDA0DD", size: 4.0, orbitRadius: 68, speed: 0.0008, inclination: 0.16 },
+        { name: "Auroris", description: "Dancing aurora skies", color: "#00FF7F", size: 3.0, orbitRadius: 85, speed: 0.0006, inclination: 0.26 }
       ]
     });
 
@@ -1366,13 +1627,13 @@ export class PlanetScene {
       sunColor: '#FF4500',
       sunSize: 12,
       planets: [
-        { name: "Pyros", description: "Eternal volcanic eruptions", color: "#FF0000", size: 2.5, orbitRadius: 18, speed: 0.003, inclination: 0.2 },
-        { name: "Emberon", description: "Covered in burning embers", color: "#FF6347", size: 2.0, orbitRadius: 26, speed: 0.0022, inclination: 0.1 },
-        { name: "Magmara", description: "Rivers of flowing magma", color: "#FF4500", size: 3.2, orbitRadius: 35, speed: 0.0018, inclination: 0.06 },
-        { name: "Scorchia", description: "Scorched by twin suns", color: "#FFD700", size: 2.8, orbitRadius: 48, speed: 0.0014, inclination: 0.09 },
-        { name: "Furnaxis", description: "A giant forge world", color: "#FF8C00", size: 5.0, orbitRadius: 65, speed: 0.0009, inclination: 0.04 },
-        { name: "Cinderis", description: "Ash-covered wasteland", color: "#DC143C", size: 2.5, orbitRadius: 80, speed: 0.0007, inclination: 0.11 },
-        { name: "Blazeon", description: "Eternal solar flares", color: "#FF1493", size: 3.5, orbitRadius: 95, speed: 0.0005, inclination: 0.08 }
+        { name: "Pyros", description: "Eternal volcanic eruptions", color: "#FF0000", size: 2.5, orbitRadius: 18, speed: 0.003, inclination: 0.35 },
+        { name: "Emberon", description: "Covered in burning embers", color: "#FF6347", size: 2.0, orbitRadius: 26, speed: 0.0022, inclination: 0.22 },
+        { name: "Magmara", description: "Rivers of flowing magma", color: "#FF4500", size: 3.2, orbitRadius: 35, speed: 0.0018, inclination: 0.15 },
+        { name: "Scorchia", description: "Scorched by twin suns", color: "#FFD700", size: 2.8, orbitRadius: 48, speed: 0.0014, inclination: 0.2 },
+        { name: "Furnaxis", description: "A giant forge world", color: "#FF8C00", size: 5.0, orbitRadius: 65, speed: 0.0009, inclination: 0.12 },
+        { name: "Cinderis", description: "Ash-covered wasteland", color: "#DC143C", size: 2.5, orbitRadius: 80, speed: 0.0007, inclination: 0.25 },
+        { name: "Blazeon", description: "Eternal solar flares", color: "#FF1493", size: 3.5, orbitRadius: 95, speed: 0.0005, inclination: 0.18 }
       ]
     });
 
@@ -1384,12 +1645,12 @@ export class PlanetScene {
       sunColor: '#00FF00',
       sunSize: 9,
       planets: [
-        { name: "Cubix", description: "A perfect cubic world", color: "#4169E1", size: 2.2, orbitRadius: 20, speed: 0.0024, inclination: 0.1, shape: 'cube' },
-        { name: "Torusphere", description: "Ringed artificial world", color: "#32CD32", size: 2.5, orbitRadius: 30, speed: 0.0019, inclination: 0.05, shape: 'torus' },
-        { name: "Octara", description: "Eight-sided crystal formation", color: "#FF6347", size: 2.0, orbitRadius: 42, speed: 0.0015, inclination: 0.12, shape: 'octahedron' },
-        { name: "Dodeca", description: "Twelve-faced geometric marvel", color: "#FFD700", size: 2.8, orbitRadius: 56, speed: 0.0011, inclination: 0.08, shape: 'dodecahedron' },
-        { name: "Icosa", description: "Twenty-sided engineering wonder", color: "#00CED1", size: 3.2, orbitRadius: 72, speed: 0.0008, inclination: 0.06, shape: 'icosahedron' },
-        { name: "Cylios", description: "Rotating cylindrical habitat", color: "#9370DB", size: 2.6, orbitRadius: 88, speed: 0.0006, inclination: 0.14, shape: 'cylinder' }
+        { name: "Cubix", description: "A perfect cubic world", color: "#4169E1", size: 2.2, orbitRadius: 20, speed: 0.0024, inclination: 0.22, shape: 'cube' },
+        { name: "Torusphere", description: "Ringed artificial world", color: "#32CD32", size: 2.5, orbitRadius: 30, speed: 0.0019, inclination: 0.13, shape: 'torus' },
+        { name: "Octara", description: "Eight-sided crystal formation", color: "#FF6347", size: 2.0, orbitRadius: 42, speed: 0.0015, inclination: 0.28, shape: 'octahedron' },
+        { name: "Dodeca", description: "Twelve-faced geometric marvel", color: "#FFD700", size: 2.8, orbitRadius: 56, speed: 0.0011, inclination: 0.18, shape: 'dodecahedron' },
+        { name: "Icosa", description: "Twenty-sided engineering wonder", color: "#00CED1", size: 3.2, orbitRadius: 72, speed: 0.0008, inclination: 0.15, shape: 'icosahedron' },
+        { name: "Cylios", description: "Rotating cylindrical habitat", color: "#9370DB", size: 2.6, orbitRadius: 88, speed: 0.0006, inclination: 0.32, shape: 'cylinder' }
       ]
     });
 
@@ -1401,12 +1662,12 @@ export class PlanetScene {
       sunColor: '#1E90FF',
       sunSize: 8.5,
       planets: [
-        { name: "Neptara", description: "Endless ocean planet", color: "#1E90FF", size: 2.4, orbitRadius: 22, speed: 0.0023, inclination: 0.09, shape: 'sphere' },
-        { name: "Coralys", description: "Living reef world", color: "#FF7F50", size: 2.1, orbitRadius: 32, speed: 0.0018, inclination: 0.11, shape: 'icosahedron' },
-        { name: "Tidalis", description: "World of eternal tides", color: "#4682B4", size: 2.9, orbitRadius: 44, speed: 0.0014, inclination: 0.07, shape: 'sphere' },
-        { name: "Marinius", description: "Deep trench planet", color: "#000080", size: 3.5, orbitRadius: 58, speed: 0.001, inclination: 0.05, shape: 'octahedron' },
-        { name: "Vaporis", description: "Steam and mist covered", color: "#B0E0E6", size: 2.3, orbitRadius: 74, speed: 0.0007, inclination: 0.13, shape: 'sphere' },
-        { name: "Abyssus", description: "Mysterious underwater caverns", color: "#191970", size: 4.0, orbitRadius: 92, speed: 0.0005, inclination: 0.1, shape: 'dodecahedron' }
+        { name: "Neptara", description: "Endless ocean planet", color: "#1E90FF", size: 2.4, orbitRadius: 22, speed: 0.0023, inclination: 0.2, shape: 'sphere' },
+        { name: "Coralys", description: "Living reef world", color: "#FF7F50", size: 2.1, orbitRadius: 32, speed: 0.0018, inclination: 0.25, shape: 'icosahedron' },
+        { name: "Tidalis", description: "World of eternal tides", color: "#4682B4", size: 2.9, orbitRadius: 44, speed: 0.0014, inclination: 0.16, shape: 'sphere' },
+        { name: "Marinius", description: "Deep trench planet", color: "#000080", size: 3.5, orbitRadius: 58, speed: 0.001, inclination: 0.12, shape: 'octahedron' },
+        { name: "Vaporis", description: "Steam and mist covered", color: "#B0E0E6", size: 2.3, orbitRadius: 74, speed: 0.0007, inclination: 0.29, shape: 'sphere' },
+        { name: "Abyssus", description: "Mysterious underwater caverns", color: "#191970", size: 4.0, orbitRadius: 92, speed: 0.0005, inclination: 0.22, shape: 'dodecahedron' }
       ]
     });
 
@@ -1418,13 +1679,13 @@ export class PlanetScene {
       sunColor: '#ADFF2F',
       sunSize: 7.5,
       planets: [
-        { name: "Floralis", description: "Covered in giant flowers", color: "#FF1493", size: 2.3, orbitRadius: 19, speed: 0.0026, inclination: 0.1, shape: 'sphere' },
-        { name: "Arboria", description: "World of massive trees", color: "#228B22", size: 2.7, orbitRadius: 28, speed: 0.002, inclination: 0.08, shape: 'cylinder' },
-        { name: "Fungara", description: "Bioluminescent mushroom forests", color: "#9370DB", size: 2.0, orbitRadius: 39, speed: 0.0016, inclination: 0.12, shape: 'torus' },
-        { name: "Vineworld", description: "Interconnected vine networks", color: "#32CD32", size: 3.3, orbitRadius: 52, speed: 0.0012, inclination: 0.06, shape: 'icosahedron' },
-        { name: "Junglios", description: "Dense rainforest planet", color: "#006400", size: 3.8, orbitRadius: 67, speed: 0.0009, inclination: 0.09, shape: 'sphere' },
-        { name: "Pollenis", description: "Eternal spring with blooming meadows", color: "#FFB6C1", size: 2.5, orbitRadius: 84, speed: 0.0006, inclination: 0.11, shape: 'octahedron' },
-        { name: "Bioforge", description: "Living organism planet", color: "#7FFF00", size: 4.2, orbitRadius: 98, speed: 0.0004, inclination: 0.07, shape: 'dodecahedron' }
+        { name: "Floralis", description: "Covered in giant flowers", color: "#FF1493", size: 2.3, orbitRadius: 19, speed: 0.0026, inclination: 0.23, shape: 'sphere' },
+        { name: "Arboria", description: "World of massive trees", color: "#228B22", size: 2.7, orbitRadius: 28, speed: 0.002, inclination: 0.17, shape: 'cylinder' },
+        { name: "Fungara", description: "Bioluminescent mushroom forests", color: "#9370DB", size: 2.0, orbitRadius: 39, speed: 0.0016, inclination: 0.27, shape: 'torus' },
+        { name: "Vineworld", description: "Interconnected vine networks", color: "#32CD32", size: 3.3, orbitRadius: 52, speed: 0.0012, inclination: 0.14, shape: 'icosahedron' },
+        { name: "Junglios", description: "Dense rainforest planet", color: "#006400", size: 3.8, orbitRadius: 67, speed: 0.0009, inclination: 0.2, shape: 'sphere' },
+        { name: "Pollenis", description: "Eternal spring with blooming meadows", color: "#FFB6C1", size: 2.5, orbitRadius: 84, speed: 0.0006, inclination: 0.25, shape: 'octahedron' },
+        { name: "Bioforge", description: "Living organism planet", color: "#7FFF00", size: 4.2, orbitRadius: 98, speed: 0.0004, inclination: 0.16, shape: 'dodecahedron' }
       ]
     });
   }
@@ -1810,43 +2071,70 @@ export class PlanetScene {
   }
 
   private createSynthesizedSpaceMusic(): void {
-    // Create a simple ambient drone using Web Audio API
-    // This creates an ethereal space-like ambience
+    // Create a melodic ambient sequence using Web Audio API
+    // Uses an arpeggio pattern for more interesting soundscape
     try {
       // Reuse existing audio context or create new one
       if (!this.audioContext) {
         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       
-      // Create oscillators for ambient drone
-      const osc1 = this.audioContext.createOscillator();
-      const osc2 = this.audioContext.createOscillator();
-      const osc3 = this.audioContext.createOscillator();
-      
-      osc1.type = 'sine';
-      osc2.type = 'sine';
-      osc3.type = 'sine';
-      
-      osc1.frequency.value = 110; // A2
-      osc2.frequency.value = 165; // E3
-      osc3.frequency.value = 220; // A3
-      
+      // Create gain node for overall volume control
       this.musicGainNode = this.audioContext.createGain();
-      this.musicGainNode.gain.value = 0.05; // Very quiet ambient
-      
-      osc1.connect(this.musicGainNode);
-      osc2.connect(this.musicGainNode);
-      osc3.connect(this.musicGainNode);
+      this.musicGainNode.gain.value = 0.04; // Quiet ambient volume
       this.musicGainNode.connect(this.audioContext.destination);
       
-      osc1.start();
-      osc2.start();
-      osc3.start();
+      // Melodic sequence in C minor pentatonic (C, Eb, F, G, Bb)
+      // Frequencies for ethereal space feel
+      const melody = [
+        { freq: 261.63, duration: 2.0 },  // C4
+        { freq: 311.13, duration: 1.5 },  // Eb4
+        { freq: 349.23, duration: 1.5 },  // F4
+        { freq: 392.00, duration: 2.0 },  // G4
+        { freq: 293.66, duration: 1.5 },  // D4
+        { freq: 261.63, duration: 2.5 },  // C4
+        { freq: 233.08, duration: 2.0 },  // Bb3
+        { freq: 196.00, duration: 3.0 }   // G3
+      ];
       
-      // Store references for cleanup
-      this.musicOscillators = [osc1, osc2, osc3];
+      // Play the melody in a loop
+      let currentTime = this.audioContext.currentTime;
+      const playMelody = () => {
+        melody.forEach((note, index) => {
+          const osc = this.audioContext!.createOscillator();
+          const noteGain = this.audioContext!.createGain();
+          
+          osc.type = 'sine';
+          osc.frequency.value = note.freq;
+          
+          // Envelope for each note (fade in/out)
+          noteGain.gain.setValueAtTime(0, currentTime);
+          noteGain.gain.linearRampToValueAtTime(0.3, currentTime + 0.1);
+          noteGain.gain.exponentialRampToValueAtTime(0.01, currentTime + note.duration - 0.1);
+          
+          osc.connect(noteGain);
+          noteGain.connect(this.musicGainNode!);
+          
+          osc.start(currentTime);
+          osc.stop(currentTime + note.duration);
+          
+          this.musicOscillators.push(osc);
+          currentTime += note.duration;
+        });
+        
+        // Schedule next loop
+        const totalDuration = melody.reduce((sum, note) => sum + note.duration, 0);
+        setTimeout(() => {
+          if (this.isMusicEnabled && this.audioContext) {
+            currentTime = this.audioContext.currentTime;
+            playMelody();
+          }
+        }, totalDuration * 1000);
+      };
       
-      console.log('Synthesized space ambience started');
+      playMelody();
+      
+      console.log('Melodic space ambience started');
     } catch (err) {
       console.warn('Could not create synthesized music:', err);
     }
