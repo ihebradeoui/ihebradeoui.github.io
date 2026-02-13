@@ -1916,9 +1916,9 @@ export class PlanetScene {
     uiDiv.style.padding = '15px';
     uiDiv.style.borderRadius = '8px';
     uiDiv.style.zIndex = '1000';
-    uiDiv.style.cursor = 'pointer';
-    uiDiv.style.transition = 'opacity 0.3s ease';
-    uiDiv.title = 'Click to hide/show';
+    uiDiv.style.transition = 'all 0.3s ease';
+    uiDiv.style.maxHeight = '600px';
+    uiDiv.style.overflow = 'hidden';
     
     // Apply backdrop filter with browser compatibility check
     if ('backdropFilter' in uiDiv.style || 'webkitBackdropFilter' in uiDiv.style) {
@@ -1926,8 +1926,45 @@ export class PlanetScene {
       (uiDiv.style as any).webkitBackdropFilter = 'blur(10px)';
     }
     
-    uiDiv.innerHTML = `
-      <div style="margin-bottom: 10px; font-weight: bold; font-size: 16px;">Camera Controls 🎮</div>
+    // Create header with toggle button
+    const headerDiv = document.createElement('div');
+    headerDiv.style.display = 'flex';
+    headerDiv.style.justifyContent = 'space-between';
+    headerDiv.style.alignItems = 'center';
+    headerDiv.style.marginBottom = '10px';
+    headerDiv.style.cursor = 'pointer';
+    
+    const titleSpan = document.createElement('span');
+    titleSpan.style.fontWeight = 'bold';
+    titleSpan.style.fontSize = '16px';
+    titleSpan.textContent = 'Camera Controls 🎮';
+    
+    const toggleButton = document.createElement('button');
+    toggleButton.textContent = '−';
+    toggleButton.style.background = 'rgba(255, 255, 255, 0.2)';
+    toggleButton.style.border = 'none';
+    toggleButton.style.color = 'white';
+    toggleButton.style.fontSize = '20px';
+    toggleButton.style.width = '30px';
+    toggleButton.style.height = '30px';
+    toggleButton.style.borderRadius = '4px';
+    toggleButton.style.cursor = 'pointer';
+    toggleButton.style.transition = 'background 0.2s';
+    toggleButton.title = 'Click to minimize/expand';
+    
+    toggleButton.addEventListener('mouseenter', () => {
+      toggleButton.style.background = 'rgba(255, 255, 255, 0.3)';
+    });
+    toggleButton.addEventListener('mouseleave', () => {
+      toggleButton.style.background = 'rgba(255, 255, 255, 0.2)';
+    });
+    
+    headerDiv.appendChild(titleSpan);
+    headerDiv.appendChild(toggleButton);
+    
+    // Create content div
+    const contentDiv = document.createElement('div');
+    contentDiv.innerHTML = `
       <div style="margin-bottom: 5px;"><strong>1:</strong> Spawn Point</div>
       <div style="margin-bottom: 5px;"><strong>2:</strong> Overview</div>
       <div style="margin-bottom: 5px;"><strong>3:</strong> Follow Sun</div>
@@ -1945,18 +1982,70 @@ export class PlanetScene {
       </div>
     `;
     
-    // Add click handler to hide/show panel
-    let isVisible = true;
-    uiDiv.addEventListener('click', () => {
-      isVisible = !isVisible;
-      if (isVisible) {
-        uiDiv.style.opacity = '1';
-        uiDiv.style.pointerEvents = 'auto';
-      } else {
-        uiDiv.style.opacity = '0';
-        uiDiv.style.pointerEvents = 'none';
+    // Create volume control section
+    const volumeDiv = document.createElement('div');
+    volumeDiv.style.marginTop = '15px';
+    volumeDiv.style.paddingTop = '15px';
+    volumeDiv.style.borderTop = '1px solid rgba(255,255,255,0.3)';
+    
+    const volumeLabel = document.createElement('div');
+    volumeLabel.innerHTML = '<strong>🎵 Music Volume:</strong>';
+    volumeLabel.style.marginBottom = '8px';
+    
+    const volumeSlider = document.createElement('input');
+    volumeSlider.type = 'range';
+    volumeSlider.min = '0';
+    volumeSlider.max = '100';
+    volumeSlider.value = '40'; // Default to 40% (0.08 gain / 0.2 max)
+    volumeSlider.style.width = '100%';
+    volumeSlider.style.cursor = 'pointer';
+    
+    const volumeValue = document.createElement('span');
+    volumeValue.textContent = '40%';
+    volumeValue.style.fontSize = '12px';
+    volumeValue.style.marginLeft = '10px';
+    
+    volumeSlider.addEventListener('input', (e) => {
+      const value = parseInt((e.target as HTMLInputElement).value);
+      volumeValue.textContent = `${value}%`;
+      if (this.musicGainNode) {
+        // Scale volume from 0 to 0.2 (max reasonable volume)
+        this.musicGainNode.gain.value = value / 500;
       }
     });
+    
+    const volumeControls = document.createElement('div');
+    volumeControls.style.display = 'flex';
+    volumeControls.style.alignItems = 'center';
+    volumeControls.appendChild(volumeSlider);
+    volumeControls.appendChild(volumeValue);
+    
+    volumeDiv.appendChild(volumeLabel);
+    volumeDiv.appendChild(volumeControls);
+    
+    // Assemble the UI
+    uiDiv.appendChild(headerDiv);
+    uiDiv.appendChild(contentDiv);
+    uiDiv.appendChild(volumeDiv);
+    
+    // Add toggle functionality - retractable, not hidden
+    let isExpanded = true;
+    const toggleContent = () => {
+      isExpanded = !isExpanded;
+      if (isExpanded) {
+        contentDiv.style.display = 'block';
+        volumeDiv.style.display = 'block';
+        toggleButton.textContent = '−';
+        uiDiv.style.maxHeight = '600px';
+      } else {
+        contentDiv.style.display = 'none';
+        volumeDiv.style.display = 'none';
+        toggleButton.textContent = '+';
+        uiDiv.style.maxHeight = '60px';
+      }
+    };
+    
+    headerDiv.addEventListener('click', toggleContent);
     
     document.body.appendChild(uiDiv);
     this.cameraPresetUI = uiDiv;
@@ -2118,7 +2207,7 @@ export class PlanetScene {
 
   private createSynthesizedSpaceMusic(): void {
     // Create a melodic ambient sequence using Web Audio API
-    // Multiple modes for variety
+    // Multiple modes for variety - now with happier melodies!
     try {
       // Reuse existing audio context or create new one
       if (!this.audioContext) {
@@ -2127,60 +2216,71 @@ export class PlanetScene {
       
       // Create gain node for overall volume control
       this.musicGainNode = this.audioContext.createGain();
-      this.musicGainNode.gain.value = 0.04; // Quiet ambient volume
+      this.musicGainNode.gain.value = 0.08; // Slightly louder for happier vibe
       this.musicGainNode.connect(this.audioContext.destination);
       
-      // Define multiple melody modes
+      // Define multiple melody modes - all uplifting and happy!
       this.melodyModes = [
-        // Mode 0: C minor pentatonic (Original)
+        // Mode 0: C Major Pentatonic (Happy and Bright)
         [
-          { freq: 261.63, duration: 2.0 },  // C4
-          { freq: 311.13, duration: 1.5 },  // Eb4
-          { freq: 349.23, duration: 1.5 },  // F4
-          { freq: 392.00, duration: 2.0 },  // G4
-          { freq: 293.66, duration: 1.5 },  // D4
-          { freq: 261.63, duration: 2.5 },  // C4
-          { freq: 233.08, duration: 2.0 },  // Bb3
-          { freq: 196.00, duration: 3.0 }   // G3
-        ],
-        // Mode 1: A minor pentatonic (Melancholic)
-        [
-          { freq: 220.00, duration: 2.0 },  // A3
-          { freq: 261.63, duration: 1.5 },  // C4
-          { freq: 293.66, duration: 1.5 },  // D4
-          { freq: 329.63, duration: 2.0 },  // E4
+          { freq: 261.63, duration: 1.2 },  // C4
+          { freq: 293.66, duration: 1.0 },  // D4
+          { freq: 329.63, duration: 1.2 },  // E4
           { freq: 392.00, duration: 1.5 },  // G4
-          { freq: 440.00, duration: 2.5 },  // A4
-          { freq: 329.63, duration: 2.0 },  // E4
-          { freq: 293.66, duration: 3.0 }   // D4
+          { freq: 440.00, duration: 1.0 },  // A4
+          { freq: 523.25, duration: 1.8 },  // C5
+          { freq: 440.00, duration: 1.2 },  // A4
+          { freq: 392.00, duration: 2.0 }   // G4
         ],
-        // Mode 2: D major pentatonic (Uplifting)
+        // Mode 1: G Major Pentatonic (Joyful)
         [
-          { freq: 293.66, duration: 1.5 },  // D4
-          { freq: 329.63, duration: 1.5 },  // E4
-          { freq: 369.99, duration: 2.0 },  // F#4
-          { freq: 440.00, duration: 2.0 },  // A4
-          { freq: 493.88, duration: 1.5 },  // B4
-          { freq: 587.33, duration: 2.5 },  // D5
-          { freq: 493.88, duration: 2.0 },  // B4
-          { freq: 440.00, duration: 3.0 }   // A4
+          { freq: 392.00, duration: 1.0 },  // G4
+          { freq: 440.00, duration: 1.0 },  // A4
+          { freq: 493.88, duration: 1.2 },  // B4
+          { freq: 587.33, duration: 1.5 },  // D5
+          { freq: 659.25, duration: 1.2 },  // E5
+          { freq: 783.99, duration: 1.8 },  // G5
+          { freq: 659.25, duration: 1.2 },  // E5
+          { freq: 587.33, duration: 2.0 }   // D5
         ],
-        // Mode 3: E phrygian (Mystical)
+        // Mode 2: D Major (Uplifting and Energetic)
         [
-          { freq: 164.81, duration: 2.5 },  // E3
-          { freq: 174.61, duration: 2.0 },  // F3
-          { freq: 196.00, duration: 1.5 },  // G3
-          { freq: 220.00, duration: 2.0 },  // A3
-          { freq: 246.94, duration: 1.5 },  // B3
-          { freq: 261.63, duration: 2.5 },  // C4
-          { freq: 293.66, duration: 2.0 },  // D4
-          { freq: 329.63, duration: 3.0 }   // E4
+          { freq: 293.66, duration: 1.0 },  // D4
+          { freq: 329.63, duration: 1.0 },  // E4
+          { freq: 369.99, duration: 1.2 },  // F#4
+          { freq: 440.00, duration: 1.5 },  // A4
+          { freq: 493.88, duration: 1.2 },  // B4
+          { freq: 587.33, duration: 1.8 },  // D5
+          { freq: 493.88, duration: 1.2 },  // B4
+          { freq: 440.00, duration: 2.0 }   // A4
+        ],
+        // Mode 3: F Major Pentatonic (Cheerful and Playful)
+        [
+          { freq: 349.23, duration: 1.0 },  // F4
+          { freq: 392.00, duration: 1.0 },  // G4
+          { freq: 440.00, duration: 1.2 },  // A4
+          { freq: 523.25, duration: 1.5 },  // C5
+          { freq: 587.33, duration: 1.2 },  // D5
+          { freq: 698.46, duration: 1.8 },  // F5
+          { freq: 587.33, duration: 1.2 },  // D5
+          { freq: 523.25, duration: 2.0 }   // C5
+        ],
+        // Mode 4: A Major Pentatonic (Bright and Optimistic)
+        [
+          { freq: 440.00, duration: 1.0 },  // A4
+          { freq: 493.88, duration: 1.0 },  // B4
+          { freq: 554.37, duration: 1.2 },  // C#5
+          { freq: 659.25, duration: 1.5 },  // E5
+          { freq: 739.99, duration: 1.2 },  // F#5
+          { freq: 880.00, duration: 1.8 },  // A5
+          { freq: 739.99, duration: 1.2 },  // F#5
+          { freq: 659.25, duration: 2.0 }   // E5
         ]
       ];
       
       this.playCurrentMelody();
       
-      console.log(`Melodic space ambience started - Mode ${this.currentMelodyMode}`);
+      console.log(`Happy melodic space ambience started - Mode ${this.currentMelodyMode}`);
     } catch (err) {
       console.warn('Could not create synthesized music:', err);
     }
