@@ -43,6 +43,23 @@ export interface PlanetData {
   orbitInclination?: number; // Inclination angle for varied orbital planes
 }
 
+export interface GalaxyData {
+  id: string;
+  name: string;
+  description: string;
+  sunColor: string;
+  sunSize: number;
+  planets: Array<{
+    name: string;
+    description: string;
+    color: string;
+    size: number;
+    orbitRadius: number;
+    speed: number;
+    inclination: number;
+  }>;
+}
+
 export enum CameraPreset {
   SPAWN_POINT = 'spawn',
   OVERVIEW = 'overview',
@@ -68,6 +85,10 @@ export class PlanetScene {
   private followingPlanet: Mesh | null = null;
   private cameraPresetUI: HTMLDivElement | null = null;
   private keyboardHandler: ((event: KeyboardEvent) => void) | null = null;
+  private cameraControlsAttached: boolean = false; // Track camera control state
+  private galaxies: GalaxyData[] = [];
+  private currentGalaxyIndex: number = 0;
+  private orbitPaths: Map<string, Mesh> = new Map(); // Track orbit paths for cleanup
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -75,6 +96,10 @@ export class PlanetScene {
       stencil: true,
       antialias: true // Enable hardware anti-aliasing
     });
+    
+    // Initialize galaxies before creating the scene
+    this.initializeGalaxies();
+    
     this.scene = this.createScene();
     
     // Run the render loop
@@ -114,8 +139,9 @@ export class PlanetScene {
       Vector3.Zero(),
       scene
     );
-    // Initially detach controls for preset-based system
+    // Initially attach controls and track the state
     this.camera.attachControl(this.canvas, false);
+    this.cameraControlsAttached = true; // Track initial state
     this.camera.lowerRadiusLimit = 20;
     this.camera.upperRadiusLimit = 300;
     this.camera.wheelPrecision = 20;
@@ -149,8 +175,8 @@ export class PlanetScene {
     // Create star field particles
     this.createStarField();
 
-    // Create initial planets with orbital paths
-    this.createInitialPlanets();
+    // Load initial galaxy (Solar System)
+    this.switchGalaxy(0);
 
     // Create meteor effects
     this.createMeteorSystem();
@@ -482,43 +508,6 @@ export class PlanetScene {
         }
       }, 2000);
       this.meteorTimeouts.push(timeoutId);
-    });
-  }
-
-  private createInitialPlanets(): void {
-    // Create planets with orbital parameters (slower speeds for cozy vibe)
-    // Each planet has a different orbital inclination for varied planes
-    const initialPlanets = [
-      { orbitRadius: 15, color: "#E8B4A0", size: 1.8, speed: 0.002, name: "Mercury", inclination: 0.12 },
-      { orbitRadius: 22, color: "#FFB84D", size: 2.3, speed: 0.0016, name: "Venus", inclination: 0.06 },
-      { orbitRadius: 30, color: "#4A9EFF", size: 2.5, speed: 0.0013, name: "Earth", inclination: 0 },
-      { orbitRadius: 38, color: "#FF6B4D", size: 2.0, speed: 0.0010, name: "Mars", inclination: 0.03 },
-      { orbitRadius: 55, color: "#FFD700", size: 4.5, speed: 0.0007, name: "Jupiter", inclination: 0.02 },
-      { orbitRadius: 70, color: "#FFE4B5", size: 4.0, speed: 0.0005, name: "Saturn", inclination: 0.04 },
-      { orbitRadius: 85, color: "#87CEEB", size: 3.2, speed: 0.0004, name: "Uranus", inclination: 0.013 },
-      { orbitRadius: 100, color: "#4169FF", size: 3.0, speed: 0.0003, name: "Neptune", inclination: 0.03 },
-    ];
-
-    initialPlanets.forEach((data, index) => {
-      const planetId = `planet_${index}`;
-      const startAngle = (Math.PI * 2 * index) / initialPlanets.length;
-      
-      this.createPlanet(planetId, {
-        id: planetId,
-        name: data.name,
-        description: 'Click to edit',
-        position: { 
-          x: Math.cos(startAngle) * data.orbitRadius, 
-          y: Math.sin(startAngle) * data.orbitRadius * Math.sin(data.inclination), 
-          z: Math.sin(startAngle) * data.orbitRadius 
-        },
-        color: data.color,
-        size: data.size,
-        orbitRadius: data.orbitRadius,
-        orbitSpeed: data.speed,
-        orbitAngle: startAngle,
-        orbitInclination: data.inclination
-      });
     });
   }
 
@@ -1195,6 +1184,151 @@ export class PlanetScene {
     this.subscriptions.push(sub);
   }
 
+  private initializeGalaxies(): void {
+    // Our Solar System
+    this.galaxies.push({
+      id: 'solar_system',
+      name: 'Solar System',
+      description: 'Our home galaxy with familiar planets',
+      sunColor: '#FFA500',
+      sunSize: 8,
+      planets: [
+        { name: "Mercury", description: "Closest to the sun", color: "#E8B4A0", size: 1.8, orbitRadius: 15, speed: 0.002, inclination: 0.12 },
+        { name: "Venus", description: "The morning star", color: "#FFB84D", size: 2.3, orbitRadius: 22, speed: 0.0016, inclination: 0.06 },
+        { name: "Earth", description: "Our home", color: "#4A9EFF", size: 2.5, orbitRadius: 30, speed: 0.0013, inclination: 0 },
+        { name: "Mars", description: "The red planet", color: "#FF6B4D", size: 2.0, orbitRadius: 38, speed: 0.0010, inclination: 0.03 },
+        { name: "Jupiter", description: "Gas giant", color: "#FFD700", size: 4.5, orbitRadius: 55, speed: 0.0007, inclination: 0.02 },
+        { name: "Saturn", description: "Ringed beauty", color: "#FFE4B5", size: 4.0, orbitRadius: 70, speed: 0.0005, inclination: 0.04 },
+        { name: "Uranus", description: "Ice giant", color: "#87CEEB", size: 3.2, orbitRadius: 85, speed: 0.0004, inclination: 0.013 },
+        { name: "Neptune", description: "Deep blue", color: "#4169FF", size: 3.0, orbitRadius: 100, speed: 0.0003, inclination: 0.03 }
+      ]
+    });
+
+    // Zephyria - A mystical galaxy
+    this.galaxies.push({
+      id: 'zephyria',
+      name: 'Zephyria',
+      description: 'A mystical galaxy with crystalline worlds',
+      sunColor: '#00FFFF',
+      sunSize: 10,
+      planets: [
+        { name: "Crystalia", description: "A world of pure crystal", color: "#E0BBE4", size: 2.0, orbitRadius: 20, speed: 0.0025, inclination: 0.15 },
+        { name: "Luminos", description: "Glowing with ethereal light", color: "#FFD700", size: 2.8, orbitRadius: 28, speed: 0.002, inclination: 0.08 },
+        { name: "Nebulae", description: "Wrapped in colorful mists", color: "#FF69B4", size: 3.5, orbitRadius: 40, speed: 0.0015, inclination: 0.05 },
+        { name: "Prisma", description: "Refracts starlight beautifully", color: "#7FFFD4", size: 2.2, orbitRadius: 52, speed: 0.0012, inclination: 0.1 },
+        { name: "Celestia", description: "Home to ancient star beings", color: "#DDA0DD", size: 4.0, orbitRadius: 68, speed: 0.0008, inclination: 0.07 },
+        { name: "Auroris", description: "Dancing aurora skies", color: "#00FF7F", size: 3.0, orbitRadius: 85, speed: 0.0006, inclination: 0.12 }
+      ]
+    });
+
+    // Infernia - A fiery galaxy
+    this.galaxies.push({
+      id: 'infernia',
+      name: 'Infernia',
+      description: 'A galaxy of volcanic and fiery worlds',
+      sunColor: '#FF4500',
+      sunSize: 12,
+      planets: [
+        { name: "Pyros", description: "Eternal volcanic eruptions", color: "#FF0000", size: 2.5, orbitRadius: 18, speed: 0.003, inclination: 0.2 },
+        { name: "Emberon", description: "Covered in burning embers", color: "#FF6347", size: 2.0, orbitRadius: 26, speed: 0.0022, inclination: 0.1 },
+        { name: "Magmara", description: "Rivers of flowing magma", color: "#FF4500", size: 3.2, orbitRadius: 35, speed: 0.0018, inclination: 0.06 },
+        { name: "Scorchia", description: "Scorched by twin suns", color: "#FFD700", size: 2.8, orbitRadius: 48, speed: 0.0014, inclination: 0.09 },
+        { name: "Furnaxis", description: "A giant forge world", color: "#FF8C00", size: 5.0, orbitRadius: 65, speed: 0.0009, inclination: 0.04 },
+        { name: "Cinderis", description: "Ash-covered wasteland", color: "#DC143C", size: 2.5, orbitRadius: 80, speed: 0.0007, inclination: 0.11 },
+        { name: "Blazeon", description: "Eternal solar flares", color: "#FF1493", size: 3.5, orbitRadius: 95, speed: 0.0005, inclination: 0.08 }
+      ]
+    });
+  }
+
+  private switchGalaxy(index: number): void {
+    if (index < 0 || index >= this.galaxies.length) return;
+    
+    this.currentGalaxyIndex = index;
+    
+    // Clear existing planets and orbit paths
+    this.clearGalaxy();
+    
+    // Update sun
+    this.updateSun(this.galaxies[index]);
+    
+    // Create planets from current galaxy
+    this.createGalaxyPlanets(this.galaxies[index]);
+    
+    // Update UI
+    this.updateGalaxyUI();
+    
+    // Reset camera to spawn point
+    this.setCameraPreset(CameraPreset.SPAWN_POINT);
+  }
+
+  private clearGalaxy(): void {
+    // Dispose all planets
+    this.planets.forEach(planet => {
+      planet.dispose();
+    });
+    this.planets.clear();
+    this.planetDataMap.clear();
+    
+    // Dispose all orbit paths
+    this.orbitPaths.forEach(path => {
+      path.dispose();
+    });
+    this.orbitPaths.clear();
+    
+    // Clear following planet reference
+    this.followingPlanet = null;
+  }
+
+  private updateSun(galaxy: GalaxyData): void {
+    if (!this.sun) return;
+    
+    const material = this.sun.material as PBRMaterial;
+    if (material) {
+      const sunColor = Color3.FromHexString(galaxy.sunColor);
+      material.emissiveColor = sunColor;
+      material.albedoColor = sunColor.scale(0.8);
+    }
+    
+    // Update sun size
+    this.sun.scaling = new Vector3(
+      galaxy.sunSize / 8,
+      galaxy.sunSize / 8,
+      galaxy.sunSize / 8
+    );
+  }
+
+  private createGalaxyPlanets(galaxy: GalaxyData): void {
+    galaxy.planets.forEach((planetConfig, index) => {
+      const planetId = `planet_${index}`;
+      const startAngle = (Math.PI * 2 * index) / galaxy.planets.length;
+      
+      this.createPlanet(planetId, {
+        id: planetId,
+        name: planetConfig.name,
+        description: planetConfig.description,
+        position: { 
+          x: Math.cos(startAngle) * planetConfig.orbitRadius, 
+          y: Math.sin(startAngle) * planetConfig.orbitRadius * Math.sin(planetConfig.inclination), 
+          z: Math.sin(startAngle) * planetConfig.orbitRadius 
+        },
+        color: planetConfig.color,
+        size: planetConfig.size,
+        orbitRadius: planetConfig.orbitRadius,
+        orbitSpeed: planetConfig.speed,
+        orbitAngle: startAngle,
+        orbitInclination: planetConfig.inclination
+      });
+    });
+  }
+
+  private updateGalaxyUI(): void {
+    const galaxyElement = document.getElementById('currentGalaxy');
+    if (galaxyElement) {
+      const galaxy = this.galaxies[this.currentGalaxyIndex];
+      galaxyElement.textContent = galaxy.name;
+    }
+  }
+
   private createInclinedOrbitPath(id: string, orbitRadius: number, inclination: number): void {
     // Create a torus for the orbit path
     const orbitPath = MeshBuilder.CreateTorus(
@@ -1208,8 +1342,16 @@ export class PlanetScene {
     );
     orbitPath.position = Vector3.Zero();
     
-    // Rotate the orbit path based on inclination
+    // Rotate the orbit path to match the inclined orbital plane
+    // The torus starts in XZ plane, we need to tilt it around the X-axis
+    // to create the inclined orbit that matches planet Y movement
     orbitPath.rotation.x = inclination;
+    
+    // Note: The planet moves in an ellipse where:
+    // x = cos(angle) * radius
+    // z = sin(angle) * radius  
+    // y = sin(angle) * radius * sin(inclination)
+    // The torus visualization approximates this 3D path
     
     const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
     orbitMaterial.emissiveColor = new Color3(0.08, 0.08, 0.12);
@@ -1217,6 +1359,9 @@ export class PlanetScene {
     orbitMaterial.wireframe = false;
     orbitPath.material = orbitMaterial;
     orbitPath.isPickable = false;
+    
+    // Store orbit path for later cleanup
+    this.orbitPaths.set(id, orbitPath);
   }
 
   private setupKeyboardControls(): void {
@@ -1268,6 +1413,12 @@ export class PlanetScene {
           // Toggle manual camera control
           this.toggleManualControl();
           break;
+        case 'g':
+        case 'G':
+          // Switch to next galaxy
+          const nextIndex = (this.currentGalaxyIndex + 1) % this.galaxies.length;
+          this.switchGalaxy(nextIndex);
+          break;
       }
     };
     
@@ -1300,8 +1451,12 @@ export class PlanetScene {
       <div style="margin-bottom: 5px;"><strong>4-9:</strong> Follow Planet</div>
       <div style="margin-bottom: 5px;"><strong>Arrow Keys:</strong> Manual Control</div>
       <div style="margin-bottom: 5px;"><strong>M:</strong> Toggle Mouse Control</div>
+      <div style="margin-bottom: 5px;"><strong>G:</strong> Switch Galaxy</div>
       <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3);">
         <strong>Current:</strong> <span id="currentPreset">Spawn Point</span>
+      </div>
+      <div style="margin-top: 5px;">
+        <strong>Galaxy:</strong> <span id="currentGalaxy">Solar System</span>
       </div>
     `;
     
@@ -1425,17 +1580,14 @@ export class PlanetScene {
   }
 
   private toggleManualControl(): void {
-    // Check if camera controls are currently attached
-    const isAttached = this.camera.inputs && 
-                       this.camera.inputs.attached && 
-                       typeof this.camera.inputs.attached === 'object' &&
-                       Object.keys(this.camera.inputs.attached).length > 0;
-    
-    if (isAttached) {
+    // Use tracked state for reliable toggle
+    if (this.cameraControlsAttached) {
       this.camera.detachControl();
+      this.cameraControlsAttached = false;
       this.updatePresetUI('Manual (Keyboard)');
     } else {
       this.camera.attachControl(this.canvas, false);
+      this.cameraControlsAttached = true;
       this.updatePresetUI('Manual (Mouse)');
     }
   }
