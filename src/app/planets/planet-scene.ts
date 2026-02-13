@@ -138,6 +138,19 @@ export class PlanetScene {
 
     // Setup unified animation loop
     this.setupAnimationLoop();
+    
+    // Setup pointer observable for debugging and enhanced picking
+    scene.onPointerObservable.add((pointerInfo) => {
+      if (pointerInfo.type === 1) { // POINTERDOWN
+        console.log('Pointer down on canvas');
+        const pickResult = scene.pick(scene.pointerX, scene.pointerY);
+        if (pickResult?.hit && pickResult.pickedMesh) {
+          console.log('Picked mesh:', pickResult.pickedMesh.name);
+        } else {
+          console.log('No mesh picked');
+        }
+      }
+    });
 
     return scene;
   }
@@ -361,6 +374,7 @@ export class PlanetScene {
     
     skybox.material = skyboxMaterial;
     skybox.infiniteDistance = true;
+    skybox.isPickable = false; // Critical: Don't block planet picking!
   }
 
   private createStarField(): void {
@@ -646,11 +660,25 @@ export class PlanetScene {
     // Create name label
     this.createNameLabel(planet, data.name);
 
-    // Make it clickable
+    // Make it clickable with enhanced picking
     planet.actionManager = new ActionManager(this.scene);
     planet.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
+        console.log(`Planet clicked: ${data.name} (${id})`);
         this.onPlanetClick(planet, id);
+      })
+    );
+    
+    // Also add a hover effect to show the planet is interactive
+    planet.actionManager.registerAction(
+      new ExecuteCodeAction(ActionManager.OnPointerOverTrigger, () => {
+        planet.scaling.scaleInPlace(1.05);
+      })
+    );
+    
+    planet.actionManager.registerAction(
+      new ExecuteCodeAction(ActionManager.OnPointerOutTrigger, () => {
+        planet.scaling = new Vector3(1, 1, 1);
       })
     );
 
