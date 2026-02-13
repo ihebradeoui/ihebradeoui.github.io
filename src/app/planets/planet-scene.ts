@@ -138,6 +138,14 @@ export class PlanetScene {
   private tourActive: boolean = false;
   private tourPlanetIndex: number = 0;
   private tourInterval: number | null = null;
+  
+  // Search and filter
+  private searchPanel: HTMLDivElement | null = null;
+  private searchResults: string[] = [];
+  
+  // Loading screen
+  private loadingScreen: HTMLDivElement | null = null;
+  private loadingProgress: number = 0;
 
   constructor(private canvas: HTMLCanvasElement, private database: AngularFireDatabase) {
     this.engine = new Engine(this.canvas, true, { 
@@ -146,30 +154,41 @@ export class PlanetScene {
       antialias: true // Enable hardware anti-aliasing
     });
     
+    // Show loading screen
+    this.showLoadingScreen();
+    this.updateLoadingProgress(10, 'Initializing engine...');
+    
     // Initialize galaxies before creating the scene
     this.initializeGalaxies();
+    this.updateLoadingProgress(20, 'Loading galaxies...');
     
     // Initialize audio
     this.initializeAudio();
+    this.updateLoadingProgress(30, 'Setting up audio...');
     
     // Initialize achievements
     this.initializeAchievements();
+    this.updateLoadingProgress(40, 'Loading achievements...');
     
     this.scene = this.createScene();
+    this.updateLoadingProgress(60, 'Creating 3D scene...');
     
     // Run the render loop with performance monitoring
     this.engine.runRenderLoop(() => {
       this.updatePerformanceMetrics();
       this.scene.render();
     });
+    this.updateLoadingProgress(70, 'Starting render loop...');
 
     // Handle window resize
     window.addEventListener('resize', () => {
       this.engine.resize();
     });
+    this.updateLoadingProgress(80, 'Setting up window...');
 
     // Load planets from Firebase
     this.loadPlanets();
+    this.updateLoadingProgress(90, 'Loading planet data...');
     
     // Setup modal interaction
     this.setupModalInteraction();
@@ -182,10 +201,16 @@ export class PlanetScene {
     this.setupPerformanceMonitor();
     this.setupInfoCard();
     this.setupDiscoverySystem();
+    this.setupSearchPanel();
+    
+    this.updateLoadingProgress(100, 'Ready to explore!');
+    
+    // Hide loading screen after a short delay
+    setTimeout(() => this.hideLoadingScreen(), 500);
     
     // Show tutorial for first-time users
     if (this.showTutorial) {
-      setTimeout(() => this.startTutorial(), 2000);
+      setTimeout(() => this.startTutorial(), 2500);
     }
   }
 
@@ -1958,6 +1983,23 @@ export class PlanetScene {
             this.startTutorial();
           }
           break;
+        case 'f':
+        case 'F':
+          // Toggle search panel (F for Find)
+          if (this.searchPanel?.style.display === 'none' || !this.searchPanel) {
+            this.showSearchPanel();
+          } else {
+            this.hideSearchPanel();
+          }
+          break;
+        case 's':
+        case 'S':
+          // Take screenshot (with Ctrl/Cmd modifier to avoid conflicts)
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            this.captureScreenshot();
+          }
+          break;
       }
     };
     
@@ -3154,6 +3196,299 @@ export class PlanetScene {
     }
   }
 
+  private setupSearchPanel(): void {
+    // Create search panel
+    this.searchPanel = document.createElement('div');
+    this.searchPanel.className = 'search-panel';
+    this.searchPanel.innerHTML = `
+      <div class="search-header">
+        <h3>🔍 Search Planets</h3>
+        <button class="search-close" id="searchClose">×</button>
+      </div>
+      <div class="search-input-container">
+        <input type="text" id="searchInput" placeholder="Search by name or type..." />
+        <button class="search-btn" id="searchBtn">Search</button>
+      </div>
+      <div class="search-filters">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="sphere">Spheres</button>
+        <button class="filter-btn" data-filter="cube">Cubes</button>
+        <button class="filter-btn" data-filter="torus">Torus</button>
+        <button class="filter-btn" data-filter="discovered">Discovered</button>
+        <button class="filter-btn" data-filter="undiscovered">Undiscovered</button>
+      </div>
+      <div class="search-results" id="searchResults">
+        <div class="search-placeholder">Start typing to search for planets...</div>
+      </div>
+    `;
+    this.searchPanel.style.display = 'none';
+    document.body.appendChild(this.searchPanel);
+    
+    // Setup event handlers
+    const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+    const searchBtn = document.getElementById('searchBtn');
+    const searchClose = document.getElementById('searchClose');
+    const searchResults = document.getElementById('searchResults');
+    
+    const performSearch = () => {
+      const query = searchInput.value.toLowerCase();
+      const resultsHtml: string[] = [];
+      
+      this.planetDataMap.forEach((data, id) => {
+        const matchesQuery = query === '' || 
+          data.name.toLowerCase().includes(query) || 
+          (data.shape || 'sphere').toLowerCase().includes(query) ||
+          data.description.toLowerCase().includes(query);
+        
+        if (matchesQuery) {
+          const discoveryIcon = data.discovered ? '✅' : '❓';
+          const shapeIcon = this.getShapeIcon(data.shape || 'sphere');
+          
+          resultsHtml.push(`
+            <div class="search-result-item" data-planet-id="${id}">
+              <div class="result-icon">${shapeIcon}</div>
+              <div class="result-info">
+                <div class="result-name">${data.name} ${discoveryIcon}</div>
+                <div class="result-details">${data.shape || 'sphere'} • Size: ${data.size.toFixed(1)}</div>
+              </div>
+              <button class="goto-btn" data-planet-id="${id}">Go To</button>
+            </div>
+          `);
+        }
+      });
+      
+      if (resultsHtml.length === 0) {
+        searchResults!.innerHTML = '<div class="search-placeholder">No planets found matching your search.</div>';
+      } else {
+        searchResults!.innerHTML = resultsHtml.join('');
+        
+        // Setup go-to buttons
+        document.querySelectorAll('.goto-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            const planetId = target.getAttribute('data-planet-id');
+            if (planetId) {
+              this.goToPlanet(planetId);
+              this.hideSearchPanel();
+            }
+          });
+        });
+      }
+    };
+    
+    searchInput.addEventListener('input', performSearch);
+    searchBtn?.addEventListener('click', performSearch);
+    searchClose?.addEventListener('click', () => this.hideSearchPanel());
+    
+    // Filter buttons
+    this.searchPanel.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const filter = target.getAttribute('data-filter');
+        
+        // Update active state
+        this.searchPanel?.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+        
+        // Apply filter
+        this.applySearchFilter(filter || 'all');
+      });
+    });
+  }
+
+  private getShapeIcon(shape: string): string {
+    const icons: { [key: string]: string } = {
+      'sphere': '🌐',
+      'cube': '🧊',
+      'torus': '🍩',
+      'octahedron': '💎',
+      'dodecahedron': '⬢',
+      'icosahedron': '🔷',
+      'cylinder': '🛢️'
+    };
+    return icons[shape] || '🌍';
+  }
+
+  private applySearchFilter(filter: string): void {
+    const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+    const searchResults = document.getElementById('searchResults');
+    const resultsHtml: string[] = [];
+    
+    this.planetDataMap.forEach((data, id) => {
+      let matches = false;
+      
+      switch (filter) {
+        case 'all':
+          matches = true;
+          break;
+        case 'sphere':
+        case 'cube':
+        case 'torus':
+          matches = (data.shape || 'sphere') === filter;
+          break;
+        case 'discovered':
+          matches = data.discovered === true;
+          break;
+        case 'undiscovered':
+          matches = !data.discovered;
+          break;
+      }
+      
+      if (matches) {
+        const discoveryIcon = data.discovered ? '✅' : '❓';
+        const shapeIcon = this.getShapeIcon(data.shape || 'sphere');
+        
+        resultsHtml.push(`
+          <div class="search-result-item" data-planet-id="${id}">
+            <div class="result-icon">${shapeIcon}</div>
+            <div class="result-info">
+              <div class="result-name">${data.name} ${discoveryIcon}</div>
+              <div class="result-details">${data.shape || 'sphere'} • Size: ${data.size.toFixed(1)}</div>
+            </div>
+            <button class="goto-btn" data-planet-id="${id}">Go To</button>
+          </div>
+        `);
+      }
+    });
+    
+    if (resultsHtml.length === 0) {
+      searchResults!.innerHTML = '<div class="search-placeholder">No planets found with this filter.</div>';
+    } else {
+      searchResults!.innerHTML = resultsHtml.join('');
+      
+      // Setup go-to buttons
+      document.querySelectorAll('.goto-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const target = e.target as HTMLElement;
+          const planetId = target.getAttribute('data-planet-id');
+          if (planetId) {
+            this.goToPlanet(planetId);
+            this.hideSearchPanel();
+          }
+        });
+      });
+    }
+  }
+
+  private goToPlanet(planetId: string): void {
+    const planet = this.planets.get(planetId);
+    if (planet) {
+      // Smoothly move camera to planet
+      this.camera.setTarget(planet.position);
+      this.camera.radius = 10; // Zoom in close
+      
+      // Show planet info
+      this.showInfoCard(planet);
+      
+      // Play sound
+      this.playSound('camera-change');
+    }
+  }
+
+  private showSearchPanel(): void {
+    if (this.searchPanel) {
+      this.searchPanel.style.display = 'block';
+      setTimeout(() => this.searchPanel?.classList.add('show'), 10);
+      
+      // Focus search input
+      const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+      }
+    }
+  }
+
+  private hideSearchPanel(): void {
+    if (this.searchPanel) {
+      this.searchPanel.classList.remove('show');
+      setTimeout(() => {
+        if (this.searchPanel) {
+          this.searchPanel.style.display = 'none';
+        }
+      }, 300);
+    }
+  }
+
+  private showLoadingScreen(): void {
+    this.loadingScreen = document.createElement('div');
+    this.loadingScreen.className = 'loading-screen';
+    this.loadingScreen.innerHTML = `
+      <div class="loading-content">
+        <div class="loading-logo">
+          <div class="planet-loader"></div>
+          <div class="orbit-ring"></div>
+        </div>
+        <h1 class="loading-title">Planets Explorer</h1>
+        <div class="loading-bar-container">
+          <div class="loading-bar" id="loadingBar"></div>
+        </div>
+        <div class="loading-text" id="loadingText">Initializing...</div>
+        <div class="loading-tip">💡 Tip: Use keyboard shortcuts to navigate! Press H for help.</div>
+      </div>
+    `;
+    document.body.appendChild(this.loadingScreen);
+  }
+
+  private updateLoadingProgress(progress: number, text: string): void {
+    this.loadingProgress = progress;
+    
+    const loadingBar = document.getElementById('loadingBar');
+    const loadingText = document.getElementById('loadingText');
+    
+    if (loadingBar) {
+      loadingBar.style.width = `${progress}%`;
+    }
+    
+    if (loadingText) {
+      loadingText.textContent = text;
+    }
+  }
+
+  private hideLoadingScreen(): void {
+    if (this.loadingScreen) {
+      this.loadingScreen.classList.add('fade-out');
+      setTimeout(() => {
+        if (this.loadingScreen && this.loadingScreen.parentNode) {
+          this.loadingScreen.parentNode.removeChild(this.loadingScreen);
+          this.loadingScreen = null;
+        }
+      }, 500);
+    }
+  }
+
+  private captureScreenshot(): void {
+    try {
+      // Capture canvas as image
+      const canvas = this.canvas;
+      const dataURL = canvas.toDataURL('image/png');
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.download = `planets-explorer-${Date.now()}.png`;
+      link.href = dataURL;
+      link.click();
+      
+      // Show success notification
+      this.showNotification('📸 Screenshot saved!', 'success');
+    } catch (err) {
+      console.error('Screenshot failed:', err);
+      this.showNotification('❌ Screenshot failed', 'error');
+    }
+  }
+
+  private showNotification(message: string, type: 'success' | 'error' | 'info' = 'info'): void {
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.classList.add('show'), 10);
+    setTimeout(() => {
+      notification.classList.remove('show');
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  }
+
   public dispose(): void {
     // Stop tour if active
     this.stopTour();
@@ -3172,6 +3507,16 @@ export class PlanetScene {
     if (this.tutorialOverlay && this.tutorialOverlay.parentNode) {
       this.tutorialOverlay.parentNode.removeChild(this.tutorialOverlay);
       this.tutorialOverlay = null;
+    }
+    
+    if (this.searchPanel && this.searchPanel.parentNode) {
+      this.searchPanel.parentNode.removeChild(this.searchPanel);
+      this.searchPanel = null;
+    }
+    
+    if (this.loadingScreen && this.loadingScreen.parentNode) {
+      this.loadingScreen.parentNode.removeChild(this.loadingScreen);
+      this.loadingScreen = null;
     }
     
     // Stop and cleanup audio
