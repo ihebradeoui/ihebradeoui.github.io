@@ -1,7 +1,0 @@
-{
-    "realm": "myrealm",
-    "clientId": "myclient",
-    "url": "https://keycloak.local.labs.digitaltrust.dev:8443/",
-    "ssl-required": "external",
-    "public-client": true
-  }
