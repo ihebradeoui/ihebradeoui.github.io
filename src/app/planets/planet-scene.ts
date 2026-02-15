@@ -1890,10 +1890,12 @@ export class PlanetScene {
     }
   }
 
+  private static readonly CAMERA_TRANSITION_FRAMES = 60; // 1 second at 60fps
+  
   private animateCameraTransition(onComplete: () => void): void {
     // Smoothly zoom out to show galaxy transition
     const targetRadius = 250;
-    const duration = 60; // frames
+    const duration = PlanetScene.CAMERA_TRANSITION_FRAMES;
     const startRadius = this.camera.radius;
     const deltaRadius = targetRadius - startRadius;
     
@@ -1916,7 +1918,7 @@ export class PlanetScene {
   private animateCameraZoomIn(onComplete: () => void): void {
     // Smoothly zoom back in after galaxy switch
     const targetRadius = 80; // Default spawn point radius
-    const duration = 60; // frames
+    const duration = PlanetScene.CAMERA_TRANSITION_FRAMES;
     const startRadius = this.camera.radius;
     const deltaRadius = targetRadius - startRadius;
     
@@ -1984,7 +1986,13 @@ export class PlanetScene {
   private createMiniGalaxyParticles(galaxyMesh: Mesh, galaxy: GalaxyData): void {
     // Create small particle system to represent planets orbiting
     const particleSystem = new ParticleSystem(`miniGalaxy_${galaxy.id}`, 50, this.scene);
-    particleSystem.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
+    
+    // Try to load texture, but don't fail if it's blocked
+    try {
+      particleSystem.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
+    } catch (error) {
+      console.warn('Failed to load particle texture, using default');
+    }
     
     particleSystem.emitter = galaxyMesh;
     const sphereEmitter = new SphereParticleEmitter(4);
