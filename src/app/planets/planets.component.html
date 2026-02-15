@@ -16,7 +16,19 @@
           <textarea id="planetDescription" name="planetDescription" rows="4" required placeholder="Describe your planet's unique features..."></textarea>
         </div>
         
-        <button type="submit">🚀 Save Planet</button>
+        <div style="margin-top: 20px; padding: 15px; background: rgba(138, 127, 255, 0.1); border-radius: 8px; border: 1px solid rgba(138, 127, 255, 0.3);">
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="enablePayment" style="margin-right: 10px; width: 18px; height: 18px;">
+            <span>💎 Save permanently with PayPal ($0.99)</span>
+          </label>
+          <p style="margin: 8px 0 0 28px; font-size: 12px; color: #9999ff; font-style: italic;">
+            Your planet name will be saved forever. Free saves are temporary.
+          </p>
+        </div>
+        
+        <div id="paypal-button-container" style="display: none; margin-top: 15px;"></div>
+        
+        <button type="submit" id="saveButton">🚀 Save Planet</button>
       </form>
     </div>
   </div>

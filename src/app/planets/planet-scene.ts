@@ -91,6 +91,8 @@ export class PlanetScene {
   private galaxies: GalaxyData[] = [];
   private currentGalaxyIndex: number = 0;
   private orbitPaths: Map<string, Mesh> = new Map(); // Track orbit paths for cleanup
+  private distantGalaxies: Map<number, Mesh> = new Map(); // Distant galaxy representations
+  private isCameraTransitioning: boolean = false; // Track camera transition state
   
   // Audio management
   private backgroundMusic: HTMLAudioElement | null = null;
@@ -195,8 +197,8 @@ export class PlanetScene {
     // Create nebula effect
     this.createNebula();
 
-    // Load initial galaxy (Solar System)
-    this.switchGalaxy(0);
+    // Load initial galaxy (Solar System) without animation
+    this.switchGalaxy(0, false);
 
     // Create meteor effects
     this.createMeteorSystem();
@@ -1482,6 +1484,9 @@ export class PlanetScene {
     const modal = document.getElementById('planetModal');
     const closeBtn = document.querySelector('.close');
     const form = document.getElementById('planetForm');
+    const enablePaymentCheckbox = document.getElementById('enablePayment') as HTMLInputElement;
+    const paypalContainer = document.getElementById('paypal-button-container');
+    const saveButton = document.getElementById('saveButton') as HTMLButtonElement;
 
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
@@ -1497,15 +1502,73 @@ export class PlanetScene {
       }
     });
 
+    // Toggle PayPal button visibility
+    if (enablePaymentCheckbox && paypalContainer && saveButton) {
+      enablePaymentCheckbox.addEventListener('change', () => {
+        if (enablePaymentCheckbox.checked) {
+          paypalContainer.style.display = 'block';
+          saveButton.style.display = 'none';
+          this.initPayPalButton();
+        } else {
+          paypalContainer.style.display = 'none';
+          saveButton.style.display = 'block';
+          // Clear PayPal container
+          paypalContainer.innerHTML = '';
+        }
+      });
+    }
+
     if (form) {
       form.addEventListener('submit', (e) => {
         e.preventDefault();
-        this.savePlanet();
+        this.savePlanet(false); // Free save
       });
     }
   }
 
-  private savePlanet(): void {
+  private initPayPalButton(): void {
+    const paypalContainer = document.getElementById('paypal-button-container');
+    if (!paypalContainer) return;
+
+    // Clear existing PayPal buttons
+    paypalContainer.innerHTML = '';
+
+    // Check if PayPal SDK is loaded
+    if (typeof (window as any).paypal === 'undefined') {
+      console.error('PayPal SDK not loaded');
+      paypalContainer.innerHTML = '<p style="color: #ff6b6b; text-align: center;">PayPal is not available. Please try again later.</p>';
+      return;
+    }
+
+    (window as any).paypal.Buttons({
+      createOrder: (data: any, actions: any) => {
+        return actions.order.create({
+          purchase_units: [{
+            description: 'Permanent Planet Name Save',
+            amount: {
+              value: '0.99'
+            }
+          }]
+        });
+      },
+      onApprove: async (data: any, actions: any) => {
+        const order = await actions.order.capture();
+        console.log('Payment completed:', order);
+        
+        // Save planet with premium flag
+        this.savePlanet(true);
+        
+        // Show success message
+        alert('✨ Payment successful! Your planet name has been saved permanently.');
+      },
+      onError: (err: any) => {
+        console.error('PayPal error:', err);
+        alert('Payment failed. Please try again.');
+      }
+    }).render('#paypal-button-container');
+  }
+
+  private savePlanet(isPremium: boolean = false): void {
     const modal = document.getElementById('planetModal');
     const planetId = (modal as any)?.dataset?.planetId;
     const nameInput = document.getElementById('planetName') as HTMLInputElement;
@@ -1527,7 +1590,7 @@ export class PlanetScene {
           color = storedData.color; // Fallback to stored color
         }
         
-        const planetData: PlanetData = {
+        const planetData: PlanetData & { isPremium?: boolean } = {
           id: planetId,
           name: nameInput.value,
           description: descInput.value,
@@ -1540,7 +1603,8 @@ export class PlanetScene {
           size: storedData.size,
           orbitRadius: storedData.orbitRadius,
           orbitSpeed: storedData.orbitSpeed,
-          orbitAngle: storedData.orbitAngle
+          orbitAngle: storedData.orbitAngle,
+          isPremium: isPremium
         };
 
         // Save to Firebase
@@ -1557,6 +1621,17 @@ export class PlanetScene {
 
         // Close modal
         if (modal) modal.style.display = 'none';
+        
+        // Reset form
+        const enablePaymentCheckbox = document.getElementById('enablePayment') as HTMLInputElement;
+        if (enablePaymentCheckbox) {
+          enablePaymentCheckbox.checked = false;
+        }
+        const paypalContainer = document.getElementById('paypal-button-container');
+        if (paypalContainer) {
+          paypalContainer.style.display = 'none';
+          paypalContainer.innerHTML = '';
+        }
       }
     }
   }
@@ -1706,26 +1781,40 @@ export class PlanetScene {
     });
   }
 
-  private switchGalaxy(index: number): void {
+  private switchGalaxy(index: number, withAnimation: boolean = true): void {
     if (index < 0 || index >= this.galaxies.length) return;
+    if (this.isCameraTransitioning) return; // Prevent multiple transitions
     
     this.playSound('galaxy-switch');
+    const previousIndex = this.currentGalaxyIndex;
     this.currentGalaxyIndex = index;
     
-    // Clear existing planets and orbit paths
-    this.clearGalaxy();
-    
-    // Update sun
-    this.updateSun(this.galaxies[index]);
-    
-    // Create planets from current galaxy
-    this.createGalaxyPlanets(this.galaxies[index]);
-    
-    // Update UI
-    this.updateGalaxyUI();
-    
-    // Reset camera to spawn point
-    this.setCameraPreset(CameraPreset.SPAWN_POINT);
+    if (withAnimation && previousIndex !== index) {
+      // Smooth camera transition
+      this.isCameraTransitioning = true;
+      this.animateCameraTransition(() => {
+        // Clear and create new galaxy after camera zooms out
+        this.clearGalaxy();
+        this.updateSun(this.galaxies[index]);
+        this.createGalaxyPlanets(this.galaxies[index]);
+        this.updateGalaxyUI();
+        this.updateDistantGalaxies();
+        
+        // Zoom camera back in
+        this.animateCameraZoomIn(() => {
+          this.isCameraTransitioning = false;
+          this.setCameraPreset(CameraPreset.SPAWN_POINT);
+        });
+      });
+    } else {
+      // Instant switch (first load)
+      this.clearGalaxy();
+      this.updateSun(this.galaxies[index]);
+      this.createGalaxyPlanets(this.galaxies[index]);
+      this.updateGalaxyUI();
+      this.updateDistantGalaxies();
+      this.setCameraPreset(CameraPreset.SPAWN_POINT);
+    }
   }
 
   private clearGalaxy(): void {
@@ -1769,14 +1858,18 @@ export class PlanetScene {
       const planetId = `planet_${index}`;
       const startAngle = (Math.PI * 2 * index) / galaxy.planets.length;
       
+      // Calculate initial position matching the animation loop calculation
+      const x = Math.cos(startAngle) * planetConfig.orbitRadius;
+      const z = Math.sin(startAngle) * planetConfig.orbitRadius;
+      
       this.createPlanet(planetId, {
         id: planetId,
         name: planetConfig.name,
         description: planetConfig.description,
         position: { 
-          x: Math.cos(startAngle) * planetConfig.orbitRadius, 
-          y: Math.sin(startAngle) * planetConfig.orbitRadius * Math.sin(planetConfig.inclination), 
-          z: Math.sin(startAngle) * planetConfig.orbitRadius 
+          x: x,
+          y: z * Math.sin(planetConfig.inclination), 
+          z: z * Math.cos(planetConfig.inclination)
         },
         color: planetConfig.color,
         size: planetConfig.size,
@@ -1795,6 +1888,130 @@ export class PlanetScene {
       const galaxy = this.galaxies[this.currentGalaxyIndex];
       galaxyElement.textContent = galaxy.name;
     }
+  }
+
+  private animateCameraTransition(onComplete: () => void): void {
+    // Smoothly zoom out to show galaxy transition
+    const targetRadius = 250;
+    const duration = 60; // frames
+    const startRadius = this.camera.radius;
+    const deltaRadius = targetRadius - startRadius;
+    
+    let frame = 0;
+    const animationCallback = () => {
+      frame++;
+      const progress = frame / duration;
+      const eased = this.easeInOutCubic(progress);
+      
+      this.camera.radius = startRadius + deltaRadius * eased;
+      
+      if (frame >= duration) {
+        this.scene.unregisterBeforeRender(animationCallback);
+        onComplete();
+      }
+    };
+    this.scene.registerBeforeRender(animationCallback);
+  }
+
+  private animateCameraZoomIn(onComplete: () => void): void {
+    // Smoothly zoom back in after galaxy switch
+    const targetRadius = 80; // Default spawn point radius
+    const duration = 60; // frames
+    const startRadius = this.camera.radius;
+    const deltaRadius = targetRadius - startRadius;
+    
+    let frame = 0;
+    const animationCallback = () => {
+      frame++;
+      const progress = frame / duration;
+      const eased = this.easeInOutCubic(progress);
+      
+      this.camera.radius = startRadius + deltaRadius * eased;
+      
+      if (frame >= duration) {
+        this.scene.unregisterBeforeRender(animationCallback);
+        onComplete();
+      }
+    };
+    this.scene.registerBeforeRender(animationCallback);
+  }
+
+  private createDistantGalaxies(): void {
+    // Create visual representations of other galaxies in the distance
+    this.galaxies.forEach((galaxy, index) => {
+      if (index === this.currentGalaxyIndex) return;
+      
+      const angle = (Math.PI * 2 * index) / this.galaxies.length;
+      const distance = 200; // Distance from center
+      
+      // Create a miniature galaxy representation
+      const galaxyGroup = MeshBuilder.CreateSphere(
+        `distantGalaxy_${index}`,
+        { diameter: 8, segments: 16 },
+        this.scene
+      );
+      
+      galaxyGroup.position.x = Math.cos(angle) * distance;
+      galaxyGroup.position.y = 0;
+      galaxyGroup.position.z = Math.sin(angle) * distance;
+      
+      // Apply galaxy color
+      const material = new StandardMaterial(`distantGalaxyMat_${index}`, this.scene);
+      material.emissiveColor = Color3.FromHexString(galaxy.sunColor);
+      material.alpha = 0.6;
+      galaxyGroup.material = material;
+      
+      // Add glow effect
+      if (this.glowLayer) {
+        this.glowLayer.addIncludedOnlyMesh(galaxyGroup);
+      }
+      
+      // Add some orbiting particles to make it look like a mini solar system
+      this.createMiniGalaxyParticles(galaxyGroup, galaxy);
+      
+      // Make it clickable to switch to that galaxy
+      galaxyGroup.actionManager = new ActionManager(this.scene);
+      galaxyGroup.actionManager.registerAction(
+        new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
+          this.switchGalaxy(index);
+        })
+      );
+      
+      this.distantGalaxies.set(index, galaxyGroup);
+    });
+  }
+
+  private createMiniGalaxyParticles(galaxyMesh: Mesh, galaxy: GalaxyData): void {
+    // Create small particle system to represent planets orbiting
+    const particleSystem = new ParticleSystem(`miniGalaxy_${galaxy.id}`, 50, this.scene);
+    particleSystem.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
+    
+    particleSystem.emitter = galaxyMesh;
+    const sphereEmitter = new SphereParticleEmitter(4);
+    particleSystem.particleEmitterType = sphereEmitter;
+    
+    particleSystem.color1 = Color4.FromHexString(galaxy.sunColor + "FF");
+    particleSystem.color2 = Color4.FromHexString(galaxy.sunColor + "AA");
+    particleSystem.colorDead = new Color4(0, 0, 0, 0);
+    
+    particleSystem.minSize = 0.3;
+    particleSystem.maxSize = 0.8;
+    particleSystem.minLifeTime = 2;
+    particleSystem.maxLifeTime = 4;
+    particleSystem.emitRate = 20;
+    
+    particleSystem.start();
+  }
+
+  private updateDistantGalaxies(): void {
+    // Clear existing distant galaxies
+    this.distantGalaxies.forEach(mesh => {
+      mesh.dispose();
+    });
+    this.distantGalaxies.clear();
+    
+    // Recreate them
+    this.createDistantGalaxies();
   }
 
   private createInclinedOrbitPath(id: string, orbitRadius: number, inclination: number): void {
@@ -2654,6 +2871,12 @@ export class PlanetScene {
       system.dispose();
     });
     this.meteorParticleSystems = [];
+    
+    // Dispose distant galaxies
+    this.distantGalaxies.forEach(mesh => {
+      mesh.dispose();
+    });
+    this.distantGalaxies.clear();
     
     // Remove keyboard event listener
     if (this.keyboardHandler) {
