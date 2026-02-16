@@ -1611,6 +1611,7 @@ export class PlanetScene {
           orbitRadius: storedData.orbitRadius,
           orbitSpeed: storedData.orbitSpeed,
           orbitAngle: storedData.orbitAngle,
+          orbitInclination: storedData.orbitInclination, // IMPORTANT: Save inclination to preserve orbital path
           isPremium: isPremium
         };
 
@@ -2051,8 +2052,9 @@ export class PlanetScene {
         this.scene
       );
       
-      // Position at same location as galaxy
-      orbit.position = galaxyMesh.position.clone();
+      // Don't set position - let parenting handle it
+      // When we parent the orbit to the galaxy, it will be positioned relative to the galaxy
+      // Setting position.zero() explicitly or leaving it default (0,0,0) relative to parent
       
       // Rotate each orbit slightly differently for variety
       orbit.rotation.x = Math.PI / 2 + (i * 0.3);
@@ -2069,6 +2071,7 @@ export class PlanetScene {
       orbit.isPickable = false;
       
       // Parent the orbit to the galaxy mesh so they move together
+      // Child position is relative to parent, defaults to (0,0,0) which centers it on the galaxy
       orbit.parent = galaxyMesh;
     }
   }
