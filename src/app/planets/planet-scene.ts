@@ -1900,7 +1900,8 @@ export class PlanetScene {
 
   private createGalaxyPlanets(galaxy: GalaxyData): void {
     galaxy.planets.forEach((planetConfig, index) => {
-      const planetId = `planet_${index}`;
+      // Make planet ID specific to the galaxy to avoid name conflicts across galaxies
+      const planetId = `${galaxy.id}_planet_${index}`;
       const startAngle = (Math.PI * 2 * index) / galaxy.planets.length;
       
       // Calculate initial position matching the animation loop calculation
@@ -2164,16 +2165,17 @@ export class PlanetScene {
         case '3':
           this.setCameraPreset(CameraPreset.FOLLOW_SUN);
           break;
-        case '4': // Follow Mercury (planet_0)
-        case '5': // Follow Venus (planet_1)
-        case '6': // Follow Earth (planet_2)
-        case '7': // Follow Mars (planet_3)
-        case '8': // Follow Jupiter (planet_4)
-        case '9': // Follow Saturn (planet_5)
-          // Follow specific planet: Keys 4-9 map to first 6 planets (Mercury through Saturn)
-          // Note: Uranus (planet_6) and Neptune (planet_7) are not mapped due to keyboard limitations
+        case '4': // Follow Mercury (first planet)
+        case '5': // Follow Venus (second planet)
+        case '6': // Follow Earth (third planet)
+        case '7': // Follow Mars (fourth planet)
+        case '8': // Follow Jupiter (fifth planet)
+        case '9': // Follow Saturn (sixth planet)
+          // Follow specific planet: Keys 4-9 map to first 6 planets in current galaxy
           const planetIndex = parseInt(event.key) - 4;
-          const planetId = `planet_${planetIndex}`;
+          // Use galaxy-specific planet ID
+          const currentGalaxy = this.galaxies[this.currentGalaxyIndex];
+          const planetId = `${currentGalaxy.id}_planet_${planetIndex}`;
           const planet = this.planets.get(planetId);
           if (planet) {
             this.followPlanet(planet, planetId);
