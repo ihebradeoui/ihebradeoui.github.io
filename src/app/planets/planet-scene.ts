@@ -247,10 +247,10 @@ export class PlanetScene {
           
           // Apply inclination rotation to match the tilted torus
           // When torus is rotated by inclination around X-axis:
-          // The Z-coordinate gets split into Y and Z components
+          // Rotation formula: y' = -z*sin(θ), z' = z*cos(θ)
           planet.position.x = x;
           planet.position.z = z * Math.cos(inclination);
-          planet.position.y = z * Math.sin(inclination);
+          planet.position.y = -z * Math.sin(inclination);
           
           // Planet self-rotation - slower for cozy vibe
           planet.rotation.y += 0.002;
@@ -1874,7 +1874,7 @@ export class PlanetScene {
         description: planetConfig.description,
         position: { 
           x: x,
-          y: z * Math.sin(planetConfig.inclination), 
+          y: -z * Math.sin(planetConfig.inclination), 
           z: z * Math.cos(planetConfig.inclination)
         },
         color: planetConfig.color,
@@ -2043,14 +2043,15 @@ export class PlanetScene {
     
     // Rotate the orbit path to match the inclined orbital plane
     // The torus starts in XZ plane, we need to tilt it around the X-axis
-    // to create the inclined orbit that matches planet Y movement
+    // to create the inclined orbit that matches planet movement
     orbitPath.rotation.x = inclination;
     
-    // Note: The planet moves in an ellipse where:
-    // x = cos(angle) * radius
-    // z = sin(angle) * radius  
-    // y = sin(angle) * radius * sin(inclination)
-    // The torus visualization approximates this 3D path
+    // Note: When rotating around X-axis by angle θ:
+    // For a point on XZ plane (x, 0, z), the rotated position is:
+    // x' = x (unchanged)
+    // y' = -z * sin(θ)
+    // z' = z * cos(θ)
+    // This is the formula used in the animation loop
     
     const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
     orbitMaterial.emissiveColor = new Color3(0.3, 0.3, 0.4);
