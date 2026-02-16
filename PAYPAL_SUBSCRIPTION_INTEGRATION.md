@@ -9,7 +9,8 @@ This document describes the PayPal subscription button integration for planet na
 - **Subscription Model**: Monthly recurring subscription at $2.99/month
 - **Premium Planet Names**: Subscribers can save planet names permanently
 - **User-Friendly Flow**: Simple checkbox-based activation in the planet edit modal
-- **Robust Error Handling**: Graceful degradation when PayPal SDK is unavailable
+- **Robust Error Handling**: Graceful degradation when PayPal SDK is unavailable or plan ID is not configured
+- **Configuration Validation**: Automatically detects placeholder plan IDs and shows helpful messages
 
 ## Integration Details
 
@@ -300,11 +301,32 @@ npm run build -- --configuration production
 - PayPal SDK blocked by ad blocker
 - Invalid or missing client ID
 - Network connectivity issues
+- Plan ID not configured (shows warning message instead)
 
 **Solutions**:
 - Disable ad blocker
 - Check browser console for errors
 - Verify SDK is loaded: `console.log(window.paypal)`
+- If you see "⚠️ PayPal subscription is not configured yet", configure a valid plan ID
+
+### Issue: "PayPal subscription is not configured yet" warning
+**Cause**: The plan ID is set to the placeholder value (`P-XXXXXXXXXXXXXXXXXXXX`) or contains 'X' characters.
+
+**Solution**: 
+1. Create a subscription plan in PayPal Dashboard (see production setup instructions)
+2. Replace the `PAYPAL_PLAN_ID` constant in `planet-scene.ts` with your actual plan ID
+3. Rebuild and redeploy the application
+
+### Issue: Subscription fails with RESOURCE_NOT_FOUND error
+**Cause**: The plan ID provided is invalid or doesn't exist in PayPal.
+
+**Error Message**: `RESOURCE_NOT_FOUND - The specified resource does not exist`
+
+**Solutions**:
+- Verify plan ID is correct and matches exactly from PayPal dashboard
+- Ensure the plan is active (not draft or inactive)
+- Check that you're using the correct environment (sandbox vs production)
+- Verify client ID matches the environment where the plan was created
 
 ### Issue: Subscription fails to create
 **Possible Causes**:

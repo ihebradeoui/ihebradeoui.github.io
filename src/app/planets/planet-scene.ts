@@ -74,7 +74,7 @@ export class PlanetScene {
   // PayPal Configuration
   // TODO: Replace with your actual PayPal subscription plan ID from PayPal Dashboard
   // Guide: https://developer.paypal.com/docs/subscriptions/
-  private readonly PAYPAL_PLAN_ID = 'P-XXXXXXXXXXXXXXXXXXXX';
+  private readonly PAYPAL_PLAN_ID: string = 'P-XXXXXXXXXXXXXXXXXXXX';
   
   private scene: Scene;
   private engine: Engine;
@@ -1546,6 +1546,20 @@ export class PlanetScene {
       return;
     }
 
+    // Validate plan ID is configured (not a placeholder)
+    if (!this.PAYPAL_PLAN_ID || this.PAYPAL_PLAN_ID === 'P-XXXXXXXXXXXXXXXXXXXX' || this.PAYPAL_PLAN_ID.includes('X')) {
+      console.warn('PayPal plan ID not configured. Using placeholder ID.');
+      paypalContainer.innerHTML = `
+        <p style="color: #ffa500; text-align: center; margin: 10px 0; font-size: 14px;">
+          ⚠️ PayPal subscription is not configured yet.
+        </p>
+        <p style="color: #9999ff; text-align: center; font-size: 12px; font-style: italic;">
+          The site owner needs to configure a PayPal subscription plan. Please save without subscription for now.
+        </p>
+      `;
+      return;
+    }
+
     (window as any).paypal.Buttons({
       createSubscription: (data: any, actions: any) => {
         // Create subscription for $2.99/month
@@ -1569,7 +1583,15 @@ export class PlanetScene {
       },
       onError: (err: any) => {
         console.error('PayPal error:', err);
-        alert('Subscription failed. Please try again.');
+        
+        // Provide more specific error messages
+        let errorMessage = 'Subscription failed. Please try again.';
+        if (err && err.message) {
+          if (err.message.includes('RESOURCE_NOT_FOUND') || err.message.includes('INVALID_RESOURCE_ID')) {
+            errorMessage = '⚠️ Subscription configuration error. The PayPal plan ID is invalid. Please contact the site administrator.';
+          }
+        }
+        alert(errorMessage);
       },
       onCancel: (data: any) => {
         console.log('Subscription cancelled:', data);
