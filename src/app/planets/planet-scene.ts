@@ -71,6 +71,11 @@ export enum CameraPreset {
 }
 
 export class PlanetScene {
+  // PayPal Configuration
+  // TODO: Replace with your actual PayPal subscription plan ID from PayPal Dashboard
+  // Guide: https://developer.paypal.com/docs/subscriptions/
+  private readonly PAYPAL_PLAN_ID = 'P-XXXXXXXXXXXXXXXXXXXX';
+  
   private scene: Scene;
   private engine: Engine;
   private camera: ArcRotateCamera;
@@ -1544,12 +1549,9 @@ export class PlanetScene {
     (window as any).paypal.Buttons({
       createSubscription: (data: any, actions: any) => {
         // Create subscription for $2.99/month
-        // Note: In production, you would use a pre-created plan ID from PayPal dashboard
-        // For now, we'll create it dynamically (this requires additional API setup in production)
+        // Note: In production, replace PAYPAL_PLAN_ID with your actual plan ID from PayPal dashboard
         return actions.subscription.create({
-          plan_id: 'P-XXXXXXXXXXXXXXXXXXXX', // Replace with your actual PayPal plan ID
-          // Alternative: If you don't have a plan ID yet, you can create one in PayPal dashboard
-          // or use the following structure (not recommended for production):
+          plan_id: this.PAYPAL_PLAN_ID,
           custom_id: `planet_subscription_${Date.now()}`,
           application_context: {
             shipping_preference: 'NO_SHIPPING'
