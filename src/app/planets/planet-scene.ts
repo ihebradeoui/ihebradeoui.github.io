@@ -95,8 +95,8 @@ export class PlanetScene {
   private distantGalaxies: Map<number, Mesh> = new Map(); // Distant galaxy representations
   private isCameraTransitioning: boolean = false; // Track camera transition state
   private starFieldParticleSystem: ParticleSystem | null = null; // Reference to star field for dynamic updates
-  private starDensity: number = 100; // Default particle density (0-100)
-  private starFallSpeed: number = 50; // Default fall speed (0-100)
+  private starDensity: number = 38; // Fixed particle density (38%)
+  private starFallSpeed: number = 4; // Fixed fall speed (4%)
   
   // Audio management
   private backgroundMusic: HTMLAudioElement | null = null;
@@ -227,8 +227,13 @@ export class PlanetScene {
   }
 
   private setupAnimationLoop(): void {
+    // Time tracking for smooth motion effects
+    let time = 0;
+    
     // Single animation callback for all scene animations
     this.scene.registerBeforeRender(() => {
+      time += 0.01; // Increment time for smooth animations
+      
       // Rotate sun slowly for cozy feel
       if (this.sun) {
         this.sun.rotation.y += 0.0002; // Reduced from 0.001 for calmer atmosphere
@@ -260,6 +265,25 @@ export class PlanetScene {
           planet.rotation.y += 0.002;
         }
       });
+      
+      // Add subtle camera drift to create motion illusion
+      // Only apply when not transitioning and not in manual control mode
+      if (!this.isCameraTransitioning && this.currentPreset !== CameraPreset.FOLLOW_PLANET) {
+        // Subtle sinusoidal movement for organic feel
+        const driftAmplitude = 0.15; // Small drift amplitude
+        const driftX = Math.sin(time * 0.3) * driftAmplitude;
+        const driftY = Math.cos(time * 0.2) * driftAmplitude * 0.5; // Less vertical drift
+        const driftZ = Math.sin(time * 0.25) * driftAmplitude;
+        
+        // Apply drift to camera alpha and beta (orbital angles)
+        // This creates a gentle wobble effect
+        this.camera.alpha += driftX * 0.0001;
+        this.camera.beta += driftY * 0.0001;
+        
+        // Subtle zoom in/out for breathing effect
+        const breathe = Math.sin(time * 0.15) * 0.05;
+        this.camera.radius += breathe * 0.01;
+      }
       
       // Handle camera following for FOLLOW_PLANET preset
       if (this.currentPreset === CameraPreset.FOLLOW_PLANET && this.followingPlanet) {
@@ -484,36 +508,6 @@ export class PlanetScene {
 
     // Start the particle system
     particleSystem.start();
-  }
-
-  private updateStarDensity(density: number): void {
-    // Update the star density (0-100)
-    this.starDensity = density;
-    
-    // If star field exists, recreate it with new density
-    if (this.starFieldParticleSystem) {
-      this.starFieldParticleSystem.stop();
-      this.starFieldParticleSystem.dispose();
-      this.starFieldParticleSystem = null;
-    }
-    
-    // Recreate star field with new density
-    this.createStarField();
-  }
-
-  private updateStarFallSpeed(speed: number): void {
-    // Update the star fall speed (0-100)
-    this.starFallSpeed = speed;
-    
-    // If star field exists, recreate it with new fall speed
-    if (this.starFieldParticleSystem) {
-      this.starFieldParticleSystem.stop();
-      this.starFieldParticleSystem.dispose();
-      this.starFieldParticleSystem = null;
-    }
-    
-    // Recreate star field with new fall speed
-    this.createStarField();
   }
 
   private createMeteorSystem(): void {
@@ -2438,88 +2432,10 @@ export class PlanetScene {
     volumeDiv.appendChild(volumeLabel);
     volumeDiv.appendChild(volumeControls);
     
-    // Create star density control section
-    const densityDiv = document.createElement('div');
-    densityDiv.style.marginTop = '15px';
-    densityDiv.style.paddingTop = '15px';
-    densityDiv.style.borderTop = '1px solid rgba(255,255,255,0.3)';
-    
-    const densityLabel = document.createElement('div');
-    densityLabel.innerHTML = '<strong>✨ Star Density:</strong>';
-    densityLabel.style.marginBottom = '8px';
-    
-    const densitySlider = document.createElement('input');
-    densitySlider.type = 'range';
-    densitySlider.min = '0';
-    densitySlider.max = '100';
-    densitySlider.value = this.starDensity.toString(); // Use the stored default value
-    densitySlider.style.width = '100%';
-    densitySlider.style.cursor = 'pointer';
-    
-    const densityValue = document.createElement('span');
-    densityValue.textContent = `${this.starDensity}%`; // Use the stored default value
-    densityValue.style.fontSize = '12px';
-    densityValue.style.marginLeft = '10px';
-    
-    densitySlider.addEventListener('input', (e) => {
-      const value = parseInt((e.target as HTMLInputElement).value);
-      densityValue.textContent = `${value}%`;
-      this.updateStarDensity(value);
-    });
-    
-    const densityControls = document.createElement('div');
-    densityControls.style.display = 'flex';
-    densityControls.style.alignItems = 'center';
-    densityControls.appendChild(densitySlider);
-    densityControls.appendChild(densityValue);
-    
-    densityDiv.appendChild(densityLabel);
-    densityDiv.appendChild(densityControls);
-    
-    // Create star fall speed control section
-    const fallSpeedDiv = document.createElement('div');
-    fallSpeedDiv.style.marginTop = '15px';
-    fallSpeedDiv.style.paddingTop = '15px';
-    fallSpeedDiv.style.borderTop = '1px solid rgba(255,255,255,0.3)';
-    
-    const fallSpeedLabel = document.createElement('div');
-    fallSpeedLabel.innerHTML = '<strong>💫 Star Fall Speed:</strong>';
-    fallSpeedLabel.style.marginBottom = '8px';
-    
-    const fallSpeedSlider = document.createElement('input');
-    fallSpeedSlider.type = 'range';
-    fallSpeedSlider.min = '0';
-    fallSpeedSlider.max = '100';
-    fallSpeedSlider.value = this.starFallSpeed.toString(); // Use the stored default value
-    fallSpeedSlider.style.width = '100%';
-    fallSpeedSlider.style.cursor = 'pointer';
-    
-    const fallSpeedValue = document.createElement('span');
-    fallSpeedValue.textContent = `${this.starFallSpeed}%`; // Use the stored default value
-    fallSpeedValue.style.fontSize = '12px';
-    fallSpeedValue.style.marginLeft = '10px';
-    
-    fallSpeedSlider.addEventListener('input', (e) => {
-      const value = parseInt((e.target as HTMLInputElement).value);
-      fallSpeedValue.textContent = `${value}%`;
-      this.updateStarFallSpeed(value);
-    });
-    
-    const fallSpeedControls = document.createElement('div');
-    fallSpeedControls.style.display = 'flex';
-    fallSpeedControls.style.alignItems = 'center';
-    fallSpeedControls.appendChild(fallSpeedSlider);
-    fallSpeedControls.appendChild(fallSpeedValue);
-    
-    fallSpeedDiv.appendChild(fallSpeedLabel);
-    fallSpeedDiv.appendChild(fallSpeedControls);
-    
     // Assemble the UI
     uiDiv.appendChild(headerDiv);
     uiDiv.appendChild(contentDiv);
     uiDiv.appendChild(volumeDiv);
-    uiDiv.appendChild(densityDiv);
-    uiDiv.appendChild(fallSpeedDiv);
     
     // Add toggle functionality - retractable, not hidden
     let isExpanded = true;
@@ -2528,15 +2444,11 @@ export class PlanetScene {
       if (isExpanded) {
         contentDiv.style.display = 'block';
         volumeDiv.style.display = 'block';
-        densityDiv.style.display = 'block';
-        fallSpeedDiv.style.display = 'block';
         toggleButton.textContent = '−';
         uiDiv.style.maxHeight = '600px';
       } else {
         contentDiv.style.display = 'none';
         volumeDiv.style.display = 'none';
-        densityDiv.style.display = 'none';
-        fallSpeedDiv.style.display = 'none';
         toggleButton.textContent = '+';
         uiDiv.style.maxHeight = '60px';
       }
