@@ -113,7 +113,10 @@ export class PlanetScene {
   private orbitPaths: Map<string, Mesh> = new Map(); // Track orbit paths for cleanup
   private distantGalaxies: Map<number, Mesh> = new Map(); // Distant galaxy representations
   private isCameraTransitioning: boolean = false; // Track camera transition state
-
+  private starFieldParticleSystem: ParticleSystem | null = null; // Reference to star field for dynamic updates
+  private starDensity: number = 38; // Fixed particle density (38%)
+  private starFallSpeed: number = 4; // Fixed fall speed (4%)
+  
   // Audio management
   private backgroundMusic: HTMLAudioElement | null = null;
   private sounds: Map<string, HTMLAudioElement> = new Map();
@@ -250,8 +253,13 @@ export class PlanetScene {
   }
 
   private setupAnimationLoop(): void {
+    // Time tracking for smooth motion effects
+    let time = 0;
+    
     // Single animation callback for all scene animations
     this.scene.registerBeforeRender(() => {
+      time += 0.01; // Increment time for smooth animations
+      
       // Rotate sun slowly for cozy feel
       if (this.sun) {
         this.sun.rotation.y += 0.0002; // Reduced from 0.001 for calmer atmosphere
@@ -288,7 +296,26 @@ export class PlanetScene {
           planet.rotation.y += 0.002;
         }
       });
-
+      
+      // Add subtle camera drift to create motion illusion
+      // Only apply when not transitioning and not in manual control mode
+      if (!this.isCameraTransitioning && this.currentPreset !== CameraPreset.FOLLOW_PLANET) {
+        // Subtle sinusoidal movement for organic feel
+        const driftAmplitude = 0.15; // Small drift amplitude
+        const driftX = Math.sin(time * 0.3) * driftAmplitude;
+        const driftY = Math.cos(time * 0.2) * driftAmplitude * 0.5; // Less vertical drift
+        const driftZ = Math.sin(time * 0.25) * driftAmplitude;
+        
+        // Apply drift to camera alpha and beta (orbital angles)
+        // This creates a gentle wobble effect
+        this.camera.alpha += driftX * 0.0001;
+        this.camera.beta += driftY * 0.0001;
+        
+        // Subtle zoom in/out for breathing effect
+        const breathe = Math.sin(time * 0.15) * 0.05;
+        this.camera.radius += breathe * 0.01;
+      }
+      
       // Handle camera following for FOLLOW_PLANET preset
       if (
         this.currentPreset === CameraPreset.FOLLOW_PLANET &&
@@ -302,35 +329,49 @@ export class PlanetScene {
   private createSun(): void {
     // Create the sun sphere with ultra high detail for premium quality
     this.sun = MeshBuilder.CreateSphere(
-      'sun',
-      { diameter: 8, segments: 128 }, // Increased from 64 to 128
-      this.scene,
+      "sun",
+      { diameter: 8, segments: 256 }, // Increased to 256 for ultra smooth appearance
+      this.scene
     );
     this.sun.position = Vector3.Zero();
 
-    // Create glowing sun material with texture
-    const sunMaterial = new PBRMaterial('sunMaterial', this.scene);
-    sunMaterial.emissiveColor = new Color3(1.0, 0.8, 0.3);
-    sunMaterial.albedoColor = new Color3(1.0, 0.9, 0.4);
-
-    // Create procedural texture for sun surface
-    const sunTexture = new DynamicTexture('sunTexture', 512, this.scene, false);
+    // Create glowing sun material with enhanced PBR properties
+    const sunMaterial = new PBRMaterial("sunMaterial", this.scene);
+    sunMaterial.emissiveColor = new Color3(1.2, 0.9, 0.4);
+    sunMaterial.emissiveIntensity = 1.5;
+    sunMaterial.albedoColor = new Color3(1.0, 0.95, 0.5);
+    
+    // Create procedural texture for sun surface with more detail
+    const sunTexture = new DynamicTexture("sunTexture", 1024, this.scene, false);
     const ctx = sunTexture.getContext();
-
-    // Draw sun surface with spots and variation
-    const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
-    gradient.addColorStop(0, '#FFD700');
-    gradient.addColorStop(0.5, '#FFA500');
-    gradient.addColorStop(1, '#FF8C00');
+    
+    // Draw sun surface with enhanced gradient
+    const gradient = ctx.createRadialGradient(512, 512, 0, 512, 512, 512);
+    gradient.addColorStop(0, '#FFEB3B');
+    gradient.addColorStop(0.3, '#FFD700');
+    gradient.addColorStop(0.6, '#FFA500');
+    gradient.addColorStop(0.85, '#FF8C00');
+    gradient.addColorStop(1, '#FF6B00');
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 512, 512);
-
-    // Add some random darker spots for detail
-    for (let i = 0; i < 20; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
-      const size = Math.random() * 30 + 10;
-      ctx.fillStyle = `rgba(200, 100, 0, ${Math.random() * 0.3})`;
+    ctx.fillRect(0, 0, 1024, 1024);
+    
+    // Add more detailed darker spots (sunspots) for realism
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * 1024;
+      const y = Math.random() * 1024;
+      const size = Math.random() * 50 + 15;
+      ctx.fillStyle = `rgba(180, 80, 0, ${Math.random() * 0.4 + 0.1})`;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Add bright flares for more dynamic look
+    for (let i = 0; i < 15; i++) {
+      const x = Math.random() * 1024;
+      const y = Math.random() * 1024;
+      const size = Math.random() * 40 + 10;
+      ctx.fillStyle = `rgba(255, 255, 200, ${Math.random() * 0.3})`;
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
@@ -338,12 +379,17 @@ export class PlanetScene {
 
     sunTexture.update();
     sunMaterial.emissiveTexture = sunTexture;
-
+    
+    // Enhanced lighting properties
+    sunMaterial.roughness = 0.2;
+    sunMaterial.metallic = 0.0;
+    
     this.sun.material = sunMaterial;
 
-    // Add sun to glow layer
+    // Add sun to glow layer with stronger glow
     if (this.glowLayer) {
       this.glowLayer.addIncludedOnlyMesh(this.sun);
+      this.glowLayer.intensity = 1.2;
     }
 
     // Create corona particle effect around sun
@@ -353,44 +399,40 @@ export class PlanetScene {
   }
 
   private createSunCorona(): void {
-    const coronaSystem = new ParticleSystem('sunCorona', 500, this.scene);
+    const coronaSystem = new ParticleSystem("sunCorona", 800, this.scene);
     coronaSystem.emitter = Vector3.Zero();
-
-    // Sphere emitter
-    const sphereEmitter = new SphereParticleEmitter(5);
+    
+    // Sphere emitter with larger radius
+    const sphereEmitter = new SphereParticleEmitter(6);
     coronaSystem.particleEmitterType = sphereEmitter;
-
-    // Create particle texture
-    const coronaTexture = new DynamicTexture(
-      'coronaTexture',
-      64,
-      this.scene,
-      false,
-    );
+    
+    // Create enhanced particle texture with better glow
+    const coronaTexture = new DynamicTexture("coronaTexture", 128, this.scene, false);
     const ctx = coronaTexture.getContext();
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, 'rgba(255, 200, 100, 0.8)');
-    gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.4)');
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, 'rgba(255, 240, 150, 1)');
+    gradient.addColorStop(0.3, 'rgba(255, 200, 100, 0.7)');
+    gradient.addColorStop(0.6, 'rgba(255, 150, 50, 0.4)');
     gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillRect(0, 0, 128, 128);
     coronaTexture.update();
 
     coronaSystem.particleTexture = coronaTexture;
-    coronaSystem.minSize = 0.5;
-    coronaSystem.maxSize = 2;
+    coronaSystem.minSize = 0.8;
+    coronaSystem.maxSize = 3.0;
     coronaSystem.minLifeTime = 2;
-    coronaSystem.maxLifeTime = 4;
-    coronaSystem.emitRate = 100;
+    coronaSystem.maxLifeTime = 5;
+    coronaSystem.emitRate = 150;
     coronaSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
     coronaSystem.minEmitPower = 0.5;
-    coronaSystem.maxEmitPower = 1;
+    coronaSystem.maxEmitPower = 1.5;
     coronaSystem.updateSpeed = 0.02;
-
-    coronaSystem.color1 = new Color4(1, 0.9, 0.5, 1);
-    coronaSystem.color2 = new Color4(1, 0.7, 0.3, 1);
-    coronaSystem.colorDead = new Color4(1, 0.5, 0, 0);
-
+    
+    coronaSystem.color1 = new Color4(1, 0.95, 0.6, 1);
+    coronaSystem.color2 = new Color4(1, 0.8, 0.4, 1);
+    coronaSystem.colorDead = new Color4(1, 0.6, 0.2, 0);
+    
     coronaSystem.start();
   }
 
@@ -426,64 +468,80 @@ export class PlanetScene {
   }
 
   private createStarField(): void {
-    // Create particle system for distant stars
-    // Note: Using 2000 immortal particles (lifetime = Number.MAX_VALUE) for static starfield
-    // This is intentional for performance - stars don't need to respawn
-    // Consider reducing particle count if targeting low-end devices
-    const particleSystem = new ParticleSystem('stars', 2000, this.scene);
-
+    // Star field spatial constants
+    const STAR_FIELD_MIN_PARTICLES = 500;
+    const STAR_FIELD_MAX_PARTICLES = 5000;
+    const STAR_FIELD_WIDTH = 500;
+    const STAR_FIELD_HEIGHT = 500;
+    
+    // Star movement constants (based on fall speed slider 0-100)
+    // Fall speed 0 = no movement, Fall speed 100 = maximum movement
+    const speedMultiplier = this.starFallSpeed / 50; // 0-2x multiplier
+    const STAR_MIN_VELOCITY = -2 * speedMultiplier;
+    const STAR_MAX_VELOCITY = -4 * speedMultiplier;
+    const STAR_GRAVITY = -0.5 * speedMultiplier;
+    
+    // Create particle system for distant stars with movement
+    // Calculate particle count based on density (0-100 maps to 500-5000 particles)
+    const particleCount = Math.floor(STAR_FIELD_MIN_PARTICLES + (this.starDensity / 100) * (STAR_FIELD_MAX_PARTICLES - STAR_FIELD_MIN_PARTICLES));
+    const particleSystem = new ParticleSystem("stars", particleCount, this.scene);
+    
+    // Store reference for dynamic updates
+    this.starFieldParticleSystem = particleSystem;
+    
     // Create a simple emitter point
     particleSystem.emitter = Vector3.Zero();
-    particleSystem.minEmitBox = new Vector3(-500, -500, -500);
-    particleSystem.maxEmitBox = new Vector3(500, 500, 500);
+    // Distribute particles in all directions around the galaxy (not just from top)
+    particleSystem.minEmitBox = new Vector3(-STAR_FIELD_WIDTH, -STAR_FIELD_HEIGHT, -STAR_FIELD_WIDTH);
+    particleSystem.maxEmitBox = new Vector3(STAR_FIELD_WIDTH, STAR_FIELD_HEIGHT, STAR_FIELD_WIDTH);
 
-    // Create a simple white dot texture programmatically
-    const starTexture = new DynamicTexture(
-      'starTexture',
-      { width: 32, height: 32 },
-      this.scene,
-      false,
-    );
+    // Create an enhanced star texture with glow
+    const starTexture = new DynamicTexture("starTexture", { width: 64, height: 64 }, this.scene, false);
     const context = starTexture.getContext();
-    const centerX = 16;
-    const centerY = 16;
-    const radius = 12;
-
-    // Draw a radial gradient for the star
-    const gradient = context.createRadialGradient(
-      centerX,
-      centerY,
-      0,
-      centerX,
-      centerY,
-      radius,
-    );
+    const centerX = 32;
+    const centerY = 32;
+    const radius = 24;
+    
+    // Draw a radial gradient for the star with stronger glow
+    const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.4)');
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
     context.fillStyle = gradient;
-    context.fillRect(0, 0, 32, 32);
+    context.fillRect(0, 0, 64, 64);
     starTexture.update();
 
     particleSystem.particleTexture = starTexture;
-    particleSystem.minSize = 0.3;
-    particleSystem.maxSize = 1.5;
-
-    // Color of stars - white to slight blue tint
+    particleSystem.minSize = 0.5;
+    particleSystem.maxSize = 2.5;
+    
+    // Enhanced color range - white to various tints (blue, yellow, red for variety)
     particleSystem.color1 = new Color3(1, 1, 1).toColor4();
-    particleSystem.color2 = new Color3(0.8, 0.8, 1.0).toColor4();
-    particleSystem.colorDead = new Color3(0.5, 0.5, 0.6).toColor4();
+    particleSystem.color2 = new Color3(0.9, 0.9, 1.0).toColor4();
+    particleSystem.colorDead = new Color3(0.8, 0.8, 0.9).toColor4();
 
-    // Lifetime
-    particleSystem.minLifeTime = Number.MAX_VALUE;
-    particleSystem.maxLifeTime = Number.MAX_VALUE;
+    // Lifetime - longer lifetime since particles are distributed throughout space
+    particleSystem.minLifeTime = 100;
+    particleSystem.maxLifeTime = 150;
 
-    // Emission rate
-    particleSystem.emitRate = 2000;
-    particleSystem.updateSpeed = 0.001;
+    // Emission rate - lower since we want a stable field, not continuous spawning
+    particleSystem.emitRate = particleCount / 20;
+    particleSystem.updateSpeed = 0.02;
+
+    // Add downward velocity to simulate upward movement through space
+    particleSystem.direction1 = new Vector3(0, STAR_MIN_VELOCITY, 0);
+    particleSystem.direction2 = new Vector3(0, STAR_MAX_VELOCITY, 0);
+    
+    // Add subtle horizontal drift for more natural movement
+    particleSystem.minEmitPower = 0.5;
+    particleSystem.maxEmitPower = 1.0;
 
     particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
+
+    // Add gravity to maintain consistent downward motion
+    particleSystem.gravity = new Vector3(0, STAR_GRAVITY, 0);
 
     // Start the particle system
     particleSystem.start();
@@ -670,45 +728,58 @@ export class PlanetScene {
     // Ensure planet is pickable
     planet.isPickable = true;
 
-    // Enhanced PBR Material for ultra-realistic Unreal Engine 5 style appearance
+    // Enhanced PBR Material for ultra-realistic appearance with dramatic improvements
+    // Material enhancement constants
+    const COLOR_VIBRANCE_MULTIPLIER = 1.2;
+    const BUMP_TEXTURE_LEVEL = 2.5;
+    const EMISSIVE_COLOR_SCALE = 0.15;
+    
     const material = new PBRMaterial(`mat_${id}`, this.scene);
 
     // Create procedural texture for planet surface
     const planetTexture = this.createPlanetTexture(data.name, data.color);
     material.albedoTexture = planetTexture;
-
-    // Base color - enhanced vibrance
-    material.albedoColor = Color3.FromHexString(data.color);
-
+    
+    // Base color - enhanced vibrance with stronger saturation
+    material.albedoColor = Color3.FromHexString(data.color).scale(COLOR_VIBRANCE_MULTIPLIER);
+    
     // Enhanced metallic and roughness for photorealistic surface
-    material.metallic = 0.02;
-    material.roughness = 0.85;
-
+    material.metallic = 0.03;
+    material.roughness = 0.75;
+    
     // Add bump map for surface detail
     const bumpTexture = this.createBumpTexture();
     material.bumpTexture = bumpTexture;
-    material.bumpTexture.level = 1.5; // More pronounced surface detail
-
-    // Enhanced emissive for stronger glow effect
-    material.emissiveColor = Color3.FromHexString(data.color).scale(0.08);
-
+    material.bumpTexture.level = BUMP_TEXTURE_LEVEL;
+    
+    // Enhanced emissive for stronger atmospheric glow effect
+    material.emissiveColor = Color3.FromHexString(data.color).scale(EMISSIVE_COLOR_SCALE);
+    material.emissiveIntensity = 1.3;
+    
     // Enhanced specular highlights from sun for glossy appearance
-    material.specularIntensity = 0.6;
-
-    // Enable advanced lighting effects
-    material.directIntensity = 1.2;
-    material.environmentIntensity = 0.4;
-    material.microSurface = 0.85;
-
+    material.specularIntensity = 0.8;
+    
+    // Enable advanced lighting effects with stronger intensity
+    material.directIntensity = 1.5;
+    material.environmentIntensity = 0.6;
+    material.microSurface = 0.9;
+    
+    // Add reflection for enhanced realism (only if environment texture exists)
+    if (this.scene.environmentTexture) {
+      material.reflectionTexture = this.scene.environmentTexture;
+      material.reflectivityColor = new Color3(0.1, 0.1, 0.1);
+    }
+    
     // Ensure planet is fully opaque - no transparency
     material.alpha = 1.0;
     material.alphaMode = Engine.ALPHA_DISABLE;
     material.transparencyMode = null;
-
-    // Enable subsurface scattering for certain planet types
-    if (data.name === 'Earth' || data.name === 'Mars') {
+    
+    // Enable subsurface scattering for more planet types for realistic light transmission
+    if (data.name === "Earth" || data.name === "Mars" || data.name === "Venus" || data.name === "Jupiter") {
       material.subSurface.isTranslucencyEnabled = true;
-      material.subSurface.translucencyIntensity = 0.2;
+      material.subSurface.translucencyIntensity = 0.3;
+      material.subSurface.tintColor = Color3.FromHexString(data.color).scale(0.5);
     }
 
     planet.material = material;
