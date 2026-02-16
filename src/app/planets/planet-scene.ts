@@ -413,6 +413,11 @@ export class PlanetScene {
     const STAR_FIELD_MIN_HEIGHT = 100;
     const STAR_FIELD_MAX_HEIGHT = 500;
     
+    // Star movement constants
+    const STAR_MIN_VELOCITY = -2;
+    const STAR_MAX_VELOCITY = -4;
+    const STAR_GRAVITY = -0.5;
+    
     // Create particle system for distant stars with movement
     // Calculate particle count based on density (0-100 maps to 500-5000 particles)
     const particleCount = Math.floor(STAR_FIELD_MIN_PARTICLES + (this.starDensity / 100) * (STAR_FIELD_MAX_PARTICLES - STAR_FIELD_MIN_PARTICLES));
@@ -462,8 +467,8 @@ export class PlanetScene {
     particleSystem.updateSpeed = 0.02;
 
     // Add downward velocity to simulate upward movement through space
-    particleSystem.direction1 = new Vector3(0, -2, 0);
-    particleSystem.direction2 = new Vector3(0, -4, 0);
+    particleSystem.direction1 = new Vector3(0, STAR_MIN_VELOCITY, 0);
+    particleSystem.direction2 = new Vector3(0, STAR_MAX_VELOCITY, 0);
     
     // Add subtle horizontal drift for more natural movement
     particleSystem.minEmitPower = 0.5;
@@ -472,7 +477,7 @@ export class PlanetScene {
     particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
 
     // Add gravity to maintain consistent downward motion
-    particleSystem.gravity = new Vector3(0, -0.5, 0);
+    particleSystem.gravity = new Vector3(0, STAR_GRAVITY, 0);
 
     // Start the particle system
     particleSystem.start();
@@ -666,6 +671,11 @@ export class PlanetScene {
     planet.isPickable = true;
 
     // Enhanced PBR Material for ultra-realistic appearance with dramatic improvements
+    // Material enhancement constants
+    const COLOR_VIBRANCE_MULTIPLIER = 1.2;
+    const BUMP_TEXTURE_LEVEL = 2.5;
+    const EMISSIVE_COLOR_SCALE = 0.15;
+    
     const material = new PBRMaterial(`mat_${id}`, this.scene);
     
     // Create procedural texture for planet surface
@@ -673,7 +683,7 @@ export class PlanetScene {
     material.albedoTexture = planetTexture;
     
     // Base color - enhanced vibrance with stronger saturation
-    material.albedoColor = Color3.FromHexString(data.color).scale(1.2);
+    material.albedoColor = Color3.FromHexString(data.color).scale(COLOR_VIBRANCE_MULTIPLIER);
     
     // Enhanced metallic and roughness for photorealistic surface
     material.metallic = 0.03;
@@ -682,10 +692,10 @@ export class PlanetScene {
     // Add bump map for surface detail
     const bumpTexture = this.createBumpTexture();
     material.bumpTexture = bumpTexture;
-    material.bumpTexture.level = 2.5; // More pronounced surface detail for better depth
+    material.bumpTexture.level = BUMP_TEXTURE_LEVEL;
     
     // Enhanced emissive for stronger atmospheric glow effect
-    material.emissiveColor = Color3.FromHexString(data.color).scale(0.15);
+    material.emissiveColor = Color3.FromHexString(data.color).scale(EMISSIVE_COLOR_SCALE);
     material.emissiveIntensity = 1.3;
     
     // Enhanced specular highlights from sun for glossy appearance
