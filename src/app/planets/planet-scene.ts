@@ -1541,29 +1541,35 @@ export class PlanetScene {
     }
 
     (window as any).paypal.Buttons({
-      createOrder: (data: any, actions: any) => {
-        return actions.order.create({
-          purchase_units: [{
-            description: 'Permanent Planet Name Save',
-            amount: {
-              value: '0.99'
-            }
-          }]
+      createSubscription: (data: any, actions: any) => {
+        // Create subscription for $2.99/month
+        // Note: In production, you would use a pre-created plan ID from PayPal dashboard
+        // For now, we'll create it dynamically (this requires additional API setup in production)
+        return actions.subscription.create({
+          plan_id: 'P-XXXXXXXXXXXXXXXXXXXX', // Replace with your actual PayPal plan ID
+          // Alternative: If you don't have a plan ID yet, you can create one in PayPal dashboard
+          // or use the following structure (not recommended for production):
+          custom_id: `planet_subscription_${Date.now()}`,
+          application_context: {
+            shipping_preference: 'NO_SHIPPING'
+          }
         });
       },
       onApprove: async (data: any, actions: any) => {
-        const order = await actions.order.capture();
-        console.log('Payment completed:', order);
+        console.log('Subscription approved:', data);
         
         // Save planet with premium flag
         this.savePlanet(true);
         
         // Show success message
-        alert('✨ Payment successful! Your planet name has been saved permanently.');
+        alert('✨ Subscription successful! Your planet names will be saved permanently while subscribed.');
       },
       onError: (err: any) => {
         console.error('PayPal error:', err);
-        alert('Payment failed. Please try again.');
+        alert('Subscription failed. Please try again.');
+      },
+      onCancel: (data: any) => {
+        console.log('Subscription cancelled:', data);
       }
     }).render('#paypal-button-container');
   }
@@ -2047,8 +2053,8 @@ export class PlanetScene {
     // The torus visualization approximates this 3D path
     
     const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
-    orbitMaterial.emissiveColor = new Color3(0.08, 0.08, 0.12);
-    orbitMaterial.alpha = 0.15;
+    orbitMaterial.emissiveColor = new Color3(0.3, 0.3, 0.4);
+    orbitMaterial.alpha = 0.4;
     orbitMaterial.wireframe = false;
     orbitPath.material = orbitMaterial;
     orbitPath.isPickable = false;
