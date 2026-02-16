@@ -406,18 +406,25 @@ export class PlanetScene {
   }
 
   private createStarField(): void {
+    // Star field spatial constants
+    const STAR_FIELD_MIN_PARTICLES = 500;
+    const STAR_FIELD_MAX_PARTICLES = 5000;
+    const STAR_FIELD_WIDTH = 500;
+    const STAR_FIELD_MIN_HEIGHT = 100;
+    const STAR_FIELD_MAX_HEIGHT = 500;
+    
     // Create particle system for distant stars with movement
     // Calculate particle count based on density (0-100 maps to 500-5000 particles)
-    const maxParticles = Math.floor(500 + (this.starDensity / 100) * 4500);
-    const particleSystem = new ParticleSystem("stars", maxParticles, this.scene);
+    const particleCount = Math.floor(STAR_FIELD_MIN_PARTICLES + (this.starDensity / 100) * (STAR_FIELD_MAX_PARTICLES - STAR_FIELD_MIN_PARTICLES));
+    const particleSystem = new ParticleSystem("stars", particleCount, this.scene);
     
     // Store reference for dynamic updates
     this.starFieldParticleSystem = particleSystem;
     
     // Create a simple emitter point
     particleSystem.emitter = Vector3.Zero();
-    particleSystem.minEmitBox = new Vector3(-500, 100, -500);
-    particleSystem.maxEmitBox = new Vector3(500, 500, 500);
+    particleSystem.minEmitBox = new Vector3(-STAR_FIELD_WIDTH, STAR_FIELD_MIN_HEIGHT, -STAR_FIELD_WIDTH);
+    particleSystem.maxEmitBox = new Vector3(STAR_FIELD_WIDTH, STAR_FIELD_MAX_HEIGHT, STAR_FIELD_WIDTH);
 
     // Create an enhanced star texture with glow
     const starTexture = new DynamicTexture("starTexture", { width: 64, height: 64 }, this.scene, false);
@@ -451,7 +458,7 @@ export class PlanetScene {
     particleSystem.maxLifeTime = 80;
 
     // Emission rate
-    particleSystem.emitRate = maxParticles / 10;
+    particleSystem.emitRate = particleCount / 10;
     particleSystem.updateSpeed = 0.02;
 
     // Add downward velocity to simulate upward movement through space
@@ -689,9 +696,11 @@ export class PlanetScene {
     material.environmentIntensity = 0.6;
     material.microSurface = 0.9;
     
-    // Add reflection for enhanced realism
-    material.reflectionTexture = this.scene.environmentTexture;
-    material.reflectivityColor = new Color3(0.1, 0.1, 0.1);
+    // Add reflection for enhanced realism (only if environment texture exists)
+    if (this.scene.environmentTexture) {
+      material.reflectionTexture = this.scene.environmentTexture;
+      material.reflectivityColor = new Color3(0.1, 0.1, 0.1);
+    }
     
     // Ensure planet is fully opaque - no transparency
     material.alpha = 1.0;
@@ -2415,12 +2424,12 @@ export class PlanetScene {
     densitySlider.type = 'range';
     densitySlider.min = '0';
     densitySlider.max = '100';
-    densitySlider.value = '100'; // Default to 100%
+    densitySlider.value = this.starDensity.toString(); // Use the stored default value
     densitySlider.style.width = '100%';
     densitySlider.style.cursor = 'pointer';
     
     const densityValue = document.createElement('span');
-    densityValue.textContent = '100%';
+    densityValue.textContent = `${this.starDensity}%`; // Use the stored default value
     densityValue.style.fontSize = '12px';
     densityValue.style.marginLeft = '10px';
     
