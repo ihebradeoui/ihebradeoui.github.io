@@ -96,6 +96,7 @@ export class PlanetScene {
   private isCameraTransitioning: boolean = false; // Track camera transition state
   private starFieldParticleSystem: ParticleSystem | null = null; // Reference to star field for dynamic updates
   private starDensity: number = 100; // Default particle density (0-100)
+  private starFallSpeed: number = 50; // Default fall speed (0-100)
   
   // Audio management
   private backgroundMusic: HTMLAudioElement | null = null;
@@ -410,13 +411,14 @@ export class PlanetScene {
     const STAR_FIELD_MIN_PARTICLES = 500;
     const STAR_FIELD_MAX_PARTICLES = 5000;
     const STAR_FIELD_WIDTH = 500;
-    const STAR_FIELD_MIN_HEIGHT = 100;
-    const STAR_FIELD_MAX_HEIGHT = 500;
+    const STAR_FIELD_HEIGHT = 500;
     
-    // Star movement constants
-    const STAR_MIN_VELOCITY = -2;
-    const STAR_MAX_VELOCITY = -4;
-    const STAR_GRAVITY = -0.5;
+    // Star movement constants (based on fall speed slider 0-100)
+    // Fall speed 0 = no movement, Fall speed 100 = maximum movement
+    const speedMultiplier = this.starFallSpeed / 50; // 0-2x multiplier
+    const STAR_MIN_VELOCITY = -2 * speedMultiplier;
+    const STAR_MAX_VELOCITY = -4 * speedMultiplier;
+    const STAR_GRAVITY = -0.5 * speedMultiplier;
     
     // Create particle system for distant stars with movement
     // Calculate particle count based on density (0-100 maps to 500-5000 particles)
@@ -428,8 +430,9 @@ export class PlanetScene {
     
     // Create a simple emitter point
     particleSystem.emitter = Vector3.Zero();
-    particleSystem.minEmitBox = new Vector3(-STAR_FIELD_WIDTH, STAR_FIELD_MIN_HEIGHT, -STAR_FIELD_WIDTH);
-    particleSystem.maxEmitBox = new Vector3(STAR_FIELD_WIDTH, STAR_FIELD_MAX_HEIGHT, STAR_FIELD_WIDTH);
+    // Distribute particles in all directions around the galaxy (not just from top)
+    particleSystem.minEmitBox = new Vector3(-STAR_FIELD_WIDTH, -STAR_FIELD_HEIGHT, -STAR_FIELD_WIDTH);
+    particleSystem.maxEmitBox = new Vector3(STAR_FIELD_WIDTH, STAR_FIELD_HEIGHT, STAR_FIELD_WIDTH);
 
     // Create an enhanced star texture with glow
     const starTexture = new DynamicTexture("starTexture", { width: 64, height: 64 }, this.scene, false);
@@ -458,12 +461,12 @@ export class PlanetScene {
     particleSystem.color2 = new Color3(0.9, 0.9, 1.0).toColor4();
     particleSystem.colorDead = new Color3(0.8, 0.8, 0.9).toColor4();
 
-    // Lifetime - stars respawn from top to create continuous movement
-    particleSystem.minLifeTime = 50;
-    particleSystem.maxLifeTime = 80;
+    // Lifetime - longer lifetime since particles are distributed throughout space
+    particleSystem.minLifeTime = 100;
+    particleSystem.maxLifeTime = 150;
 
-    // Emission rate
-    particleSystem.emitRate = particleCount / 10;
+    // Emission rate - lower since we want a stable field, not continuous spawning
+    particleSystem.emitRate = particleCount / 20;
     particleSystem.updateSpeed = 0.02;
 
     // Add downward velocity to simulate upward movement through space
@@ -495,6 +498,21 @@ export class PlanetScene {
     }
     
     // Recreate star field with new density
+    this.createStarField();
+  }
+
+  private updateStarFallSpeed(speed: number): void {
+    // Update the star fall speed (0-100)
+    this.starFallSpeed = speed;
+    
+    // If star field exists, recreate it with new fall speed
+    if (this.starFieldParticleSystem) {
+      this.starFieldParticleSystem.stop();
+      this.starFieldParticleSystem.dispose();
+      this.starFieldParticleSystem = null;
+    }
+    
+    // Recreate star field with new fall speed
     this.createStarField();
   }
 
@@ -2458,11 +2476,50 @@ export class PlanetScene {
     densityDiv.appendChild(densityLabel);
     densityDiv.appendChild(densityControls);
     
+    // Create star fall speed control section
+    const fallSpeedDiv = document.createElement('div');
+    fallSpeedDiv.style.marginTop = '15px';
+    fallSpeedDiv.style.paddingTop = '15px';
+    fallSpeedDiv.style.borderTop = '1px solid rgba(255,255,255,0.3)';
+    
+    const fallSpeedLabel = document.createElement('div');
+    fallSpeedLabel.innerHTML = '<strong>💫 Star Fall Speed:</strong>';
+    fallSpeedLabel.style.marginBottom = '8px';
+    
+    const fallSpeedSlider = document.createElement('input');
+    fallSpeedSlider.type = 'range';
+    fallSpeedSlider.min = '0';
+    fallSpeedSlider.max = '100';
+    fallSpeedSlider.value = this.starFallSpeed.toString(); // Use the stored default value
+    fallSpeedSlider.style.width = '100%';
+    fallSpeedSlider.style.cursor = 'pointer';
+    
+    const fallSpeedValue = document.createElement('span');
+    fallSpeedValue.textContent = `${this.starFallSpeed}%`; // Use the stored default value
+    fallSpeedValue.style.fontSize = '12px';
+    fallSpeedValue.style.marginLeft = '10px';
+    
+    fallSpeedSlider.addEventListener('input', (e) => {
+      const value = parseInt((e.target as HTMLInputElement).value);
+      fallSpeedValue.textContent = `${value}%`;
+      this.updateStarFallSpeed(value);
+    });
+    
+    const fallSpeedControls = document.createElement('div');
+    fallSpeedControls.style.display = 'flex';
+    fallSpeedControls.style.alignItems = 'center';
+    fallSpeedControls.appendChild(fallSpeedSlider);
+    fallSpeedControls.appendChild(fallSpeedValue);
+    
+    fallSpeedDiv.appendChild(fallSpeedLabel);
+    fallSpeedDiv.appendChild(fallSpeedControls);
+    
     // Assemble the UI
     uiDiv.appendChild(headerDiv);
     uiDiv.appendChild(contentDiv);
     uiDiv.appendChild(volumeDiv);
     uiDiv.appendChild(densityDiv);
+    uiDiv.appendChild(fallSpeedDiv);
     
     // Add toggle functionality - retractable, not hidden
     let isExpanded = true;
@@ -2472,12 +2529,14 @@ export class PlanetScene {
         contentDiv.style.display = 'block';
         volumeDiv.style.display = 'block';
         densityDiv.style.display = 'block';
+        fallSpeedDiv.style.display = 'block';
         toggleButton.textContent = '−';
         uiDiv.style.maxHeight = '600px';
       } else {
         contentDiv.style.display = 'none';
         volumeDiv.style.display = 'none';
         densityDiv.style.display = 'none';
+        fallSpeedDiv.style.display = 'none';
         toggleButton.textContent = '+';
         uiDiv.style.maxHeight = '60px';
       }
