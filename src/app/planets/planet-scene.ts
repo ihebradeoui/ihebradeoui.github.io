@@ -28,6 +28,7 @@ import {
 } from "@babylonjs/core";
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Subscription } from 'rxjs';
+import { take } from 'rxjs/operators';
 
 export interface PlanetData {
   id?: string;
@@ -1806,6 +1807,9 @@ export class PlanetScene {
         this.updateGalaxyUI();
         this.updateDistantGalaxies();
         
+        // Apply saved planet names from Firebase
+        this.applySavedPlanetNames();
+        
         // Zoom camera back in
         this.animateCameraZoomIn(() => {
           this.isCameraTransitioning = false;
@@ -1819,8 +1823,42 @@ export class PlanetScene {
       this.createGalaxyPlanets(this.galaxies[index]);
       this.updateGalaxyUI();
       this.updateDistantGalaxies();
+      
+      // Apply saved planet names from Firebase
+      this.applySavedPlanetNames();
+      
       this.setCameraPreset(CameraPreset.SPAWN_POINT);
     }
+  }
+
+  private applySavedPlanetNames(): void {
+    // Apply any saved planet names from Firebase to the current planets
+    this.database.list('planets').valueChanges().pipe(
+      take(1) // Get the data once and complete
+    ).subscribe((planetsData: any) => {
+      if (!planetsData) return;
+      
+      // planetsData is an array, iterate through it
+      planetsData.forEach((data: any) => {
+        if (data && data.id) {
+          const planetId = data.id;
+          const planet = this.planets.get(planetId);
+          
+          if (planet && data.name) {
+            // Update the planet's label with the saved name
+            this.updatePlanetLabel(planet, data.name);
+            // Also update the local data map
+            if (this.planetDataMap.has(planetId)) {
+              const existingData = this.planetDataMap.get(planetId);
+              if (existingData) {
+                existingData.name = data.name;
+                existingData.description = data.description || existingData.description;
+              }
+            }
+          }
+        }
+      });
+    });
   }
 
   private clearGalaxy(): void {
@@ -1963,7 +2001,7 @@ export class PlanetScene {
       galaxyGroup.position.y = 0;
       galaxyGroup.position.z = Math.sin(angle) * distance;
       
-      // Apply galaxy color
+      // Apply galaxy color - use the actual galaxy's sun color
       const material = new StandardMaterial(`distantGalaxyMat_${index}`, this.scene);
       material.emissiveColor = Color3.FromHexString(galaxy.sunColor);
       material.alpha = 0.6;
@@ -1974,19 +2012,65 @@ export class PlanetScene {
         this.glowLayer.addIncludedOnlyMesh(galaxyGroup);
       }
       
+      // Add orbital paths around the distant galaxy to make it look more like a galaxy
+      this.createMiniGalaxyOrbits(galaxyGroup, index);
+      
       // Add some orbiting particles to make it look like a mini solar system
       this.createMiniGalaxyParticles(galaxyGroup, galaxy);
       
       // Make it clickable to switch to that galaxy
+      // Store the actual galaxy index in the mesh metadata
+      galaxyGroup.metadata = { galaxyIndex: index };
       galaxyGroup.actionManager = new ActionManager(this.scene);
       galaxyGroup.actionManager.registerAction(
         new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
-          this.switchGalaxy(index);
+          // Use the stored galaxy index to ensure we switch to the correct galaxy
+          const targetIndex = galaxyGroup.metadata.galaxyIndex;
+          this.switchGalaxy(targetIndex);
         })
       );
       
       this.distantGalaxies.set(index, galaxyGroup);
     });
+  }
+
+  private createMiniGalaxyOrbits(galaxyMesh: Mesh, galaxyIndex: number): void {
+    // Create 2-3 small orbital rings around the distant galaxy
+    const numOrbits = 3;
+    const baseRadius = 4.5; // Start slightly larger than the sphere (diameter 8)
+    
+    for (let i = 0; i < numOrbits; i++) {
+      const orbitRadius = baseRadius + (i * 1.5);
+      const orbit = MeshBuilder.CreateTorus(
+        `distantGalaxyOrbit_${galaxyIndex}_${i}`,
+        {
+          diameter: orbitRadius * 2,
+          thickness: 0.1,
+          tessellation: 32
+        },
+        this.scene
+      );
+      
+      // Position at same location as galaxy
+      orbit.position = galaxyMesh.position.clone();
+      
+      // Rotate each orbit slightly differently for variety
+      orbit.rotation.x = Math.PI / 2 + (i * 0.3);
+      orbit.rotation.y = i * 0.5;
+      
+      // Create material with similar color to galaxy but more transparent
+      const orbitMaterial = new StandardMaterial(`distantGalaxyOrbitMat_${galaxyIndex}_${i}`, this.scene);
+      const galaxyMaterial = galaxyMesh.material as StandardMaterial;
+      if (galaxyMaterial && galaxyMaterial.emissiveColor) {
+        orbitMaterial.emissiveColor = galaxyMaterial.emissiveColor.clone();
+      }
+      orbitMaterial.alpha = 0.3;
+      orbit.material = orbitMaterial;
+      orbit.isPickable = false;
+      
+      // Parent the orbit to the galaxy mesh so they move together
+      orbit.parent = galaxyMesh;
+    }
   }
 
   private createMiniGalaxyParticles(galaxyMesh: Mesh, galaxy: GalaxyData): void {
