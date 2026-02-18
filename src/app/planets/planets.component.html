@@ -1,5 +1,23 @@
 <div class="planets-container">
   <canvas id="planetsCanvas"></canvas>
+  
+  <!-- Leaderboard Toggle Button -->
+  <button id="leaderboardToggle" class="leaderboard-toggle" title="View Leaderboard">
+    🏆
+  </button>
+  
+  <!-- Leaderboard Panel -->
+  <div id="leaderboardPanel" class="leaderboard-panel">
+    <div class="leaderboard-header">
+      <h3>🏆 Planet Leaderboard</h3>
+      <button id="leaderboardClose" class="leaderboard-close">&times;</button>
+    </div>
+    <div class="leaderboard-subtitle">Longest Planet Name Ownership</div>
+    <div id="leaderboardContent" class="leaderboard-content">
+      <div class="leaderboard-loading">Loading...</div>
+    </div>
+  </div>
+  
   <div id="planetModal" class="modal" style="display: none;">
     <div class="modal-content">
       <span class="close">&times;</span>

@@ -1,12 +1,22 @@
 # SkyDiver
-npm install -g ngh
-
-ng build --configuration production --base-href https://ihebradeoui.github.io/
-
-ngh --dir=dist/sky-diver --branch main
-
 
 This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 13.3.10.
+
+## 🚀 Deployment
+
+**Deployment is now automated!** Push to any branch (except `gh-pages`) and GitHub Actions will automatically build and deploy to GitHub Pages.
+
+See [GITHUB_ACTIONS_DEPLOYMENT.md](GITHUB_ACTIONS_DEPLOYMENT.md) for details.
+
+### Manual Deployment (Optional)
+
+If you need to deploy manually:
+
+```bash
+npm install -g ngh
+ng build --configuration production --base-href https://ihebradeoui.github.io/
+ngh --dir=dist/sky-diver --branch=gh-pages
+```
 
 ## Development server
 

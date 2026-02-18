@@ -236,3 +236,288 @@ h2 {
   cursor: pointer;
   accent-color: #8a7fff;
 }
+
+/* Leaderboard Toggle Button */
+.leaderboard-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6a5acd 0%, #8a7fff 100%);
+  border: 2px solid rgba(138, 127, 255, 0.5);
+  color: white;
+  font-size: 28px;
+  cursor: pointer;
+  z-index: 900;
+  box-shadow: 
+    0 4px 20px rgba(106, 90, 205, 0.5),
+    0 0 30px rgba(138, 127, 255, 0.3);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 
+      0 4px 20px rgba(106, 90, 205, 0.5),
+      0 0 30px rgba(138, 127, 255, 0.3);
+  }
+  50% {
+    box-shadow: 
+      0 4px 25px rgba(106, 90, 205, 0.7),
+      0 0 40px rgba(138, 127, 255, 0.5);
+  }
+}
+
+.leaderboard-toggle:hover {
+  background: linear-gradient(135deg, #7a6add 0%, #9a8fff 100%);
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: 
+    0 6px 30px rgba(106, 90, 205, 0.7),
+    0 0 50px rgba(138, 127, 255, 0.5);
+}
+
+.leaderboard-toggle:active {
+  transform: scale(1.05);
+}
+
+/* Leaderboard Panel */
+.leaderboard-panel {
+  position: fixed;
+  top: 20px;
+  right: -380px;
+  width: 360px;
+  max-height: 80vh;
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.98) 0%, rgba(22, 33, 62, 0.98) 100%);
+  border: 2px solid rgba(138, 127, 255, 0.4);
+  border-radius: 20px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(106, 90, 205, 0.3),
+    inset 0 0 40px rgba(106, 90, 205, 0.05);
+  z-index: 950;
+  transition: right 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.leaderboard-panel.open {
+  right: 20px;
+}
+
+.leaderboard-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    transparent,
+    #6a5acd,
+    #8a7fff,
+    #6a5acd,
+    transparent
+  );
+  animation: shimmer 3s infinite;
+}
+
+.leaderboard-header {
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(138, 127, 255, 0.3);
+  background: rgba(106, 90, 205, 0.1);
+}
+
+.leaderboard-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  background: linear-gradient(135deg, #8a7fff, #b8b8ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.leaderboard-close {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  line-height: 1;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.leaderboard-close:hover {
+  color: #8a7fff;
+  transform: rotate(90deg);
+  text-shadow: 0 0 10px rgba(138, 127, 255, 0.8);
+}
+
+.leaderboard-subtitle {
+  padding: 10px 20px;
+  color: #9999ff;
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  background: rgba(138, 127, 255, 0.05);
+  border-bottom: 1px solid rgba(138, 127, 255, 0.2);
+}
+
+.leaderboard-content {
+  padding: 15px;
+  max-height: calc(80vh - 140px);
+  overflow-y: auto;
+}
+
+.leaderboard-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.leaderboard-content::-webkit-scrollbar-track {
+  background: rgba(26, 26, 46, 0.3);
+  border-radius: 10px;
+}
+
+.leaderboard-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #6a5acd, #8a7fff);
+  border-radius: 10px;
+}
+
+.leaderboard-content::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #7a6add, #9a8fff);
+}
+
+.leaderboard-loading {
+  text-align: center;
+  color: #8a7fff;
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+.leaderboard-empty {
+  text-align: center;
+  color: #9999ff;
+  padding: 40px 20px;
+  font-style: italic;
+}
+
+.leaderboard-item {
+  padding: 15px;
+  margin-bottom: 10px;
+  background: rgba(106, 90, 205, 0.1);
+  border: 1px solid rgba(138, 127, 255, 0.3);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.leaderboard-item:hover {
+  background: rgba(106, 90, 205, 0.2);
+  border-color: rgba(138, 127, 255, 0.5);
+  transform: translateX(-5px);
+  box-shadow: 
+    0 4px 15px rgba(106, 90, 205, 0.3),
+    inset 0 0 15px rgba(138, 127, 255, 0.1);
+}
+
+.leaderboard-item.rank-1 {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 215, 0, 0.05));
+  border-color: rgba(255, 215, 0, 0.4);
+}
+
+.leaderboard-item.rank-2 {
+  background: linear-gradient(135deg, rgba(192, 192, 192, 0.15), rgba(192, 192, 192, 0.05));
+  border-color: rgba(192, 192, 192, 0.4);
+}
+
+.leaderboard-item.rank-3 {
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.15), rgba(205, 127, 50, 0.05));
+  border-color: rgba(205, 127, 50, 0.4);
+}
+
+.leaderboard-rank {
+  display: inline-block;
+  width: 35px;
+  height: 35px;
+  line-height: 35px;
+  text-align: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6a5acd, #8a7fff);
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+  margin-right: 12px;
+  box-shadow: 0 2px 10px rgba(106, 90, 205, 0.4);
+}
+
+.leaderboard-item.rank-1 .leaderboard-rank {
+  background: linear-gradient(135deg, #FFD700, #FFA500);
+  font-size: 18px;
+}
+
+.leaderboard-item.rank-2 .leaderboard-rank {
+  background: linear-gradient(135deg, #C0C0C0, #A8A8A8);
+}
+
+.leaderboard-item.rank-3 .leaderboard-rank {
+  background: linear-gradient(135deg, #CD7F32, #B8860B);
+}
+
+.leaderboard-info {
+  display: inline-block;
+  vertical-align: middle;
+  width: calc(100% - 50px);
+}
+
+.leaderboard-name {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaderboard-streak {
+  color: #b8b8ff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.leaderboard-days {
+  background: rgba(138, 127, 255, 0.2);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  color: #8a7fff;
+}
+
+.leaderboard-planet {
+  color: #9999ff;
+  font-size: 11px;
+  margin-top: 4px;
+  font-style: italic;
+  opacity: 0.8;
+}
