@@ -50,6 +50,9 @@ export interface PlanetData {
     | 'dodecahedron'
     | 'icosahedron'
     | 'cylinder'; // Planet shape
+  claimedAt?: number; // Timestamp when a name was first set on this planet
+  lastUpdated?: number; // Timestamp when the name was last updated
+  claimedBy?: string; // Username/identifier of the person who claimed this planet
 }
 
 export interface GalaxyData {
@@ -162,6 +165,9 @@ export class PlanetScene {
 
     // Setup modal interaction
     this.setupModalInteraction();
+
+    // Setup leaderboard
+    this.setupLeaderboard();
 
     // Setup keyboard controls and camera presets
     this.setupKeyboardControls();
@@ -1850,6 +1856,107 @@ export class PlanetScene {
       .render('#paypal-button-container');
   }
 
+  private setupLeaderboard(): void {
+    const toggleBtn = document.getElementById('leaderboardToggle');
+    const closeBtn = document.getElementById('leaderboardClose');
+    const panel = document.getElementById('leaderboardPanel');
+
+    if (toggleBtn && panel) {
+      toggleBtn.addEventListener('click', () => {
+        panel.classList.toggle('open');
+        this.playSound('modal-open');
+        if (panel.classList.contains('open')) {
+          this.updateLeaderboard();
+        }
+      });
+    }
+
+    if (closeBtn && panel) {
+      closeBtn.addEventListener('click', () => {
+        panel.classList.remove('open');
+        this.playSound('modal-close');
+      });
+    }
+
+    // Update leaderboard periodically when open
+    setInterval(() => {
+      if (panel?.classList.contains('open')) {
+        this.updateLeaderboard();
+      }
+    }, 30000); // Update every 30 seconds when open
+  }
+
+  private updateLeaderboard(): void {
+    const content = document.getElementById('leaderboardContent');
+    if (!content) return;
+
+    // Get all planets with names and calculate their streaks
+    const leaderboardData: Array<{
+      name: string;
+      planetId: string;
+      daysOwned: number;
+      claimedAt: number;
+    }> = [];
+
+    const now = Date.now();
+    
+    this.planetDataMap.forEach((data, planetId) => {
+      // Only include planets with custom names (not default planet names)
+      if (data.claimedAt && data.claimedBy) {
+        const daysOwned = Math.floor((now - data.claimedAt) / (1000 * 60 * 60 * 24));
+        leaderboardData.push({
+          name: data.claimedBy,
+          planetId: planetId,
+          daysOwned: daysOwned,
+          claimedAt: data.claimedAt,
+        });
+      }
+    });
+
+    // Sort by days owned (descending)
+    leaderboardData.sort((a, b) => b.daysOwned - a.daysOwned);
+
+    // Display leaderboard
+    if (leaderboardData.length === 0) {
+      content.innerHTML = `
+        <div class="leaderboard-empty">
+          No planet names claimed yet! 🌍<br>
+          Be the first to claim a planet!
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    leaderboardData.forEach((entry, index) => {
+      const rank = index + 1;
+      const rankClass = rank <= 3 ? `rank-${rank}` : '';
+      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+      
+      html += `
+        <div class="leaderboard-item ${rankClass}">
+          <span class="leaderboard-rank">${medal || rank}</span>
+          <div class="leaderboard-info">
+            <div class="leaderboard-name">${this.escapeHtml(entry.name)}</div>
+            <div class="leaderboard-streak">
+              <span class="leaderboard-days">${entry.daysOwned} day${entry.daysOwned !== 1 ? 's' : ''}</span>
+              <span>🔥</span>
+            </div>
+            <div class="leaderboard-planet">Planet: ${this.escapeHtml(entry.planetId)}</div>
+          </div>
+        </div>
+      `;
+    });
+
+    content.innerHTML = html;
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   private savePlanet(isPremium: boolean = false): void {
     const modal = document.getElementById('planetModal');
     const planetId = (modal as any)?.dataset?.planetId;
@@ -1874,6 +1981,17 @@ export class PlanetScene {
           color = storedData.color; // Fallback to stored color
         }
 
+        const now = Date.now();
+        const previousName = storedData.name;
+        const isNameChange = previousName !== nameInput.value;
+        
+        // Determine claimedAt: use existing if present, otherwise set now
+        const claimedAt = storedData.claimedAt || now;
+        
+        // If this is a different name being set, update claimedAt to now
+        // This resets the streak when someone changes the name
+        const finalClaimedAt = isNameChange ? now : claimedAt;
+        
         const planetData: PlanetData & { isPremium?: boolean } = {
           id: planetId,
           name: nameInput.value,
@@ -1890,6 +2008,9 @@ export class PlanetScene {
           orbitAngle: storedData.orbitAngle,
           orbitInclination: storedData.orbitInclination, // IMPORTANT: Save inclination to preserve orbital path
           isPremium: isPremium,
+          claimedAt: finalClaimedAt,
+          lastUpdated: now,
+          claimedBy: nameInput.value, // Use the planet name as the claimer identifier
         };
 
         // Save to Firebase
@@ -1920,6 +2041,12 @@ export class PlanetScene {
         if (paypalContainer) {
           paypalContainer.style.display = 'none';
           paypalContainer.innerHTML = '';
+        }
+        
+        // Update leaderboard if it's open
+        const leaderboardPanel = document.getElementById('leaderboardPanel');
+        if (leaderboardPanel?.classList.contains('open')) {
+          this.updateLeaderboard();
         }
       }
     }
