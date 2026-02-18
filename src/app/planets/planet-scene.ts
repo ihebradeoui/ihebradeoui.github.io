@@ -52,7 +52,7 @@ export interface PlanetData {
     | 'cylinder'; // Planet shape
   claimedAt?: number; // Timestamp when a name was first set on this planet
   lastUpdated?: number; // Timestamp when the name was last updated
-  claimedBy?: string; // Username/identifier of the person who claimed this planet
+  claimedBy?: string; // Display name shown in the leaderboard (same as planet name)
 }
 
 export interface GalaxyData {
@@ -131,6 +131,7 @@ export class PlanetScene {
   private currentMelodyMode: number = 0;
   private melodyModes: Array<Array<{ freq: number; duration: number }>> = [];
   private melodyTimeout: number | null = null;
+  private leaderboardUpdateInterval: number | null = null; // Track leaderboard update interval
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -1863,10 +1864,18 @@ export class PlanetScene {
 
     if (toggleBtn && panel) {
       toggleBtn.addEventListener('click', () => {
+        const wasOpen = panel.classList.contains('open');
         panel.classList.toggle('open');
-        this.playSound('modal-open');
+        
         if (panel.classList.contains('open')) {
+          this.playSound('modal-open');
           this.updateLeaderboard();
+          // Start periodic updates when opened
+          this.startLeaderboardUpdates();
+        } else {
+          this.playSound('modal-close');
+          // Stop periodic updates when closed
+          this.stopLeaderboardUpdates();
         }
       });
     }
@@ -1875,15 +1884,26 @@ export class PlanetScene {
       closeBtn.addEventListener('click', () => {
         panel.classList.remove('open');
         this.playSound('modal-close');
+        // Stop periodic updates when closed
+        this.stopLeaderboardUpdates();
       });
     }
+  }
 
-    // Update leaderboard periodically when open
-    setInterval(() => {
-      if (panel?.classList.contains('open')) {
-        this.updateLeaderboard();
-      }
-    }, 30000); // Update every 30 seconds when open
+  private startLeaderboardUpdates(): void {
+    // Clear any existing interval
+    this.stopLeaderboardUpdates();
+    // Update every 30 seconds when open
+    this.leaderboardUpdateInterval = window.setInterval(() => {
+      this.updateLeaderboard();
+    }, 30000);
+  }
+
+  private stopLeaderboardUpdates(): void {
+    if (this.leaderboardUpdateInterval !== null) {
+      clearInterval(this.leaderboardUpdateInterval);
+      this.leaderboardUpdateInterval = null;
+    }
   }
 
   private updateLeaderboard(): void {
@@ -1902,10 +1922,10 @@ export class PlanetScene {
     
     this.planetDataMap.forEach((data, planetId) => {
       // Only include planets with custom names (not default planet names)
-      if (data.claimedAt && data.claimedBy) {
-        const daysOwned = Math.floor((now - data.claimedAt) / (1000 * 60 * 60 * 24));
+      if (data.claimedAt) {
+        const daysOwned = Math.max(0, Math.floor((now - data.claimedAt) / (1000 * 60 * 60 * 24)));
         leaderboardData.push({
-          name: data.claimedBy,
+          name: data.claimedBy || data.name,
           planetId: planetId,
           daysOwned: daysOwned,
           claimedAt: data.claimedAt,
@@ -1983,14 +2003,14 @@ export class PlanetScene {
 
         const now = Date.now();
         const previousName = storedData.name;
-        const isNameChange = previousName !== nameInput.value;
+        const previousClaimedAt = storedData.claimedAt;
+        const isNameChange = previousClaimedAt && previousName !== nameInput.value;
         
-        // Determine claimedAt: use existing if present, otherwise set now
-        const claimedAt = storedData.claimedAt || now;
-        
-        // If this is a different name being set, update claimedAt to now
-        // This resets the streak when someone changes the name
-        const finalClaimedAt = isNameChange ? now : claimedAt;
+        // Determine claimedAt: 
+        // - If this is the first time claiming (no previous claimedAt), set to now
+        // - If the name changed, reset to now (new ownership starts)
+        // - Otherwise, keep the existing claimedAt timestamp
+        const finalClaimedAt = isNameChange || !previousClaimedAt ? now : previousClaimedAt;
         
         const planetData: PlanetData & { isPremium?: boolean } = {
           id: planetId,
@@ -3763,6 +3783,9 @@ export class PlanetScene {
       clearInterval(this.meteorInterval);
       this.meteorInterval = null;
     }
+
+    // Clear leaderboard update interval
+    this.stopLeaderboardUpdates();
 
     // Clear all pending meteor timeouts
     this.meteorTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
