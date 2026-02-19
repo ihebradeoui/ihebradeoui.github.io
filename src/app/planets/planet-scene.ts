@@ -1956,13 +1956,8 @@ export class PlanetScene {
       html += `
         <div class="leaderboard-item ${rankClass}" data-planet-id="${this.escapeHtml(entry.planetId)}">
           <span class="leaderboard-rank">${medal || rank}</span>
-          <div class="leaderboard-info">
-            <div class="leaderboard-name">${this.escapeHtml(entry.name)}</div>
-            <div class="leaderboard-streak">
-              <span class="leaderboard-days">${entry.daysOwned} day${entry.daysOwned !== 1 ? 's' : ''}</span>
-              <span>🔥</span>
-            </div>
-          </div>
+          <span class="leaderboard-name">${this.escapeHtml(entry.name)}</span>
+          <span class="leaderboard-days">${entry.daysOwned} day${entry.daysOwned !== 1 ? 's' : ''} 🔥</span>
         </div>
       `;
     });

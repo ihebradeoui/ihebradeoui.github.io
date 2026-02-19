@@ -423,12 +423,14 @@ h2 {
 .leaderboard-item {
   display: flex;
   align-items: center;
-  padding: 15px;
+  gap: 12px;
+  padding: 12px 15px;
   margin-bottom: 10px;
   border-radius: 12px;
   transition: all 0.3s ease;
   cursor: pointer;
   border: 1px solid rgba(138, 127, 255, 0.3);
+  white-space: nowrap;
 }
 
 .leaderboard-item:hover {
@@ -512,7 +514,7 @@ h2 {
   color: white;
   font-weight: bold;
   font-size: 16px;
-  margin-right: 12px;
+  flex-shrink: 0;
   box-shadow: 0 2px 10px rgba(106, 90, 205, 0.4);
 }
 
@@ -529,31 +531,15 @@ h2 {
   background: linear-gradient(135deg, #CD7F32, #B8860B);
 }
 
-.leaderboard-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: calc(100% - 50px);
-}
-
 .leaderboard-name {
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  white-space: nowrap;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
-  margin-right: 10px;
-}
-
-.leaderboard-streak {
-  color: #b8b8ff;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .leaderboard-days {
@@ -562,5 +548,7 @@ h2 {
   border-radius: 8px;
   font-weight: 700;
   color: #fff;
+  font-size: 13px;
   white-space: nowrap;
+  flex-shrink: 0;
 }

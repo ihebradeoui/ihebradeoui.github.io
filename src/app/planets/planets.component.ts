@@ -1,11 +1,12 @@
-import { Component, AfterViewInit } from '@angular/core';
+import { Component, AfterViewInit, ViewEncapsulation } from '@angular/core';
 import { PlanetScene } from './planet-scene';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 
 @Component({
   selector: 'app-planets',
   templateUrl: './planets.component.html',
-  styleUrls: ['./planets.component.scss']
+  styleUrls: ['./planets.component.scss'],
+  encapsulation: ViewEncapsulation.None
 })
 export class PlanetsComponent implements AfterViewInit {
   private planetScene: PlanetScene | null = null;
