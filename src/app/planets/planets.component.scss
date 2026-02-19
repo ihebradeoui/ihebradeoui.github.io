@@ -384,7 +384,7 @@ h2 {
 
 .leaderboard-content {
   padding: 15px;
-  max-height: 400px; /* Limit to ~5 items (80px per item) */
+  max-height: 400px; /* Approximately 5 items based on item height + padding + margin */
   overflow-y: auto;
 }
 
@@ -563,8 +563,4 @@ h2 {
   font-weight: 700;
   color: #fff;
   white-space: nowrap;
-}
-
-.leaderboard-planet {
-  display: none; /* Hide planet ID as it's not needed in the simplified view */
 }
