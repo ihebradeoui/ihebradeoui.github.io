@@ -30,6 +30,25 @@ import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Subscription } from 'rxjs';
 import { take } from 'rxjs/operators';
 
+export interface PlanetCustomization {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  price: number;
+}
+
+export const PLANET_CUSTOMIZATIONS: PlanetCustomization[] = [
+  { id: 'cosmic_rings',   name: 'Cosmic Rings',    description: 'Vibrant multicolor rings shimmer around your world',             icon: '🪐', price: 0.99 },
+  { id: 'star_aura',      name: 'Star Aura',        description: 'A pulsing stellar corona glows around the planet',               icon: '⭐', price: 1.49 },
+  { id: 'moon_companion', name: 'Moon Companion',   description: 'A cute little moon faithfully orbits your planet',               icon: '🌙', price: 1.49 },
+  { id: 'crystal_shield', name: 'Crystal Shield',   description: 'A glowing crystalline energy barrier pulses around the world',   icon: '🔮', price: 1.99 },
+  { id: 'nebula_cloud',   name: 'Nebula Cloud',     description: 'Swirling cosmic nebula particles engulf the planet',             icon: '🌌', price: 1.99 },
+  { id: 'comet_streaks',  name: 'Comet Streaks',    description: 'Glowing micro-comets race in brilliant arcs around the planet',  icon: '☄️', price: 0.99 },
+  { id: 'sparkle_orbit',  name: 'Sparkle Orbit',    description: 'Magical star sparkles dance around the planet',                  icon: '✨', price: 0.99 },
+  { id: 'aurora_glow',    name: 'Aurora Glow',      description: 'A mesmerizing multicolor aurora wraps the planet',               icon: '🌈', price: 2.49 },
+];
+
 export interface PlanetData {
   id?: string;
   name: string;
@@ -53,6 +72,7 @@ export interface PlanetData {
   claimedAt?: number; // Timestamp when a name was first set on this planet
   lastUpdated?: number; // Timestamp when the name was last updated
   claimedBy?: string; // Display name shown in the leaderboard (same as planet name)
+  customizations?: string[]; // List of owned cosmetic customization IDs
 }
 
 export interface GalaxyData {
@@ -132,6 +152,8 @@ export class PlanetScene {
   private melodyModes: Array<Array<{ freq: number; duration: number }>> = [];
   private melodyTimeout: number | null = null;
   private leaderboardUpdateInterval: number | null = null; // Track leaderboard update interval
+  private customizationParticles: Map<string, ParticleSystem[]> = new Map();
+  private customizationCallbacks: Map<string, (() => void)[]> = new Map();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -848,6 +870,11 @@ export class PlanetScene {
     // Store references
     this.planets.set(id, planet);
     this.planetDataMap.set(id, data);
+
+    // Apply cosmetic customizations if they exist
+    if (data.customizations && data.customizations.length > 0) {
+      this.applyPlanetCustomizations(planet, id, data.customizations);
+    }
 
     return planet;
   }
@@ -1714,6 +1741,13 @@ export class PlanetScene {
       this.playSound('modal-open');
       modal.style.display = 'block';
       (modal as any).dataset.planetId = planetId;
+
+      // Populate the cosmetics grid
+      this.populateCustomizationCards(planetId);
+
+      // Hide any open customization PayPal container
+      const cosmeticPaypal = document.getElementById('customization-paypal-container');
+      if (cosmeticPaypal) cosmeticPaypal.style.display = 'none';
     }
   }
 
@@ -2044,6 +2078,7 @@ export class PlanetScene {
           claimedAt: finalClaimedAt,
           lastUpdated: now,
           claimedBy: nameInput.value, // Use the planet name as the claimer identifier
+          customizations: storedData.customizations || [], // Preserve existing customizations
         };
 
         // Save to Firebase
@@ -2114,6 +2149,11 @@ export class PlanetScene {
               if (existingPlanet) {
                 this.updatePlanetLabel(existingPlanet, data.name);
                 this.planetDataMap.set(planetId, data);
+                // Apply customizations if any changed
+                if (data.customizations && data.customizations.length > 0) {
+                  this.clearPlanetCustomizations(planetId);
+                  this.applyPlanetCustomizations(existingPlanet, planetId, data.customizations);
+                }
               }
             } else {
               // Create new planet
@@ -2642,7 +2682,13 @@ export class PlanetScene {
                   existingData.name = data.name;
                   existingData.description =
                     data.description || existingData.description;
+                  existingData.customizations = data.customizations || existingData.customizations;
                 }
+              }
+              // Apply cosmetic customizations if present
+              if (data.customizations && data.customizations.length > 0) {
+                this.clearPlanetCustomizations(planetId);
+                this.applyPlanetCustomizations(planet, planetId, data.customizations);
               }
             }
           }
@@ -2651,6 +2697,18 @@ export class PlanetScene {
   }
 
   private clearGalaxy(): void {
+    // Stop and dispose customization particle systems before planet disposal
+    this.customizationParticles.forEach((particles) => {
+      particles.forEach(p => { p.stop(); p.dispose(); });
+    });
+    this.customizationParticles.clear();
+
+    // Unregister customization animation callbacks before planet disposal
+    this.customizationCallbacks.forEach((callbacks) => {
+      callbacks.forEach(cb => this.scene.unregisterBeforeRender(cb));
+    });
+    this.customizationCallbacks.clear();
+
     // Dispose all planets
     this.planets.forEach((planet) => {
       planet.dispose();
@@ -2958,6 +3016,510 @@ export class PlanetScene {
 
     // Store orbit path for later cleanup
     this.orbitPaths.set(id, orbitPath);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Planet Customization System
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private storeCustomizationCallback(planetId: string, cb: () => void): void {
+    const list = this.customizationCallbacks.get(planetId) || [];
+    list.push(cb);
+    this.customizationCallbacks.set(planetId, list);
+  }
+
+  private storeCustomizationParticle(planetId: string, ps: ParticleSystem): void {
+    const list = this.customizationParticles.get(planetId) || [];
+    list.push(ps);
+    this.customizationParticles.set(planetId, list);
+  }
+
+  private clearPlanetCustomizations(planetId: string): void {
+    const particles = this.customizationParticles.get(planetId);
+    if (particles) {
+      particles.forEach(p => { try { p.stop(); p.dispose(); } catch (_) { /* already disposed */ } });
+      this.customizationParticles.delete(planetId);
+    }
+    const callbacks = this.customizationCallbacks.get(planetId);
+    if (callbacks) {
+      callbacks.forEach(cb => this.scene.unregisterBeforeRender(cb));
+      this.customizationCallbacks.delete(planetId);
+    }
+    // Dispose child meshes created by customizations (non-particle ones)
+    const planet = this.planets.get(planetId);
+    if (planet) {
+      planet.getChildMeshes(true).forEach(child => {
+        if (child.name.startsWith('cosmicRing_') ||
+            child.name.startsWith('moon_') ||
+            child.name.startsWith('crystalShield_') ||
+            child.name.startsWith('aurora_') ||
+            child.name.startsWith('comet1_') ||
+            child.name.startsWith('comet2_')) {
+          child.dispose();
+        }
+      });
+    }
+  }
+
+  private applyPlanetCustomizations(planet: Mesh, planetId: string, customizations: string[]): void {
+    customizations.forEach(id => {
+      switch (id) {
+        case 'cosmic_rings':   this.addCosmicRings(planet, planetId);   break;
+        case 'star_aura':      this.addStarAura(planet, planetId);      break;
+        case 'moon_companion': this.addMoonCompanion(planet, planetId); break;
+        case 'crystal_shield': this.addCrystalShield(planet, planetId); break;
+        case 'nebula_cloud':   this.addNebulaCloud(planet, planetId);   break;
+        case 'comet_streaks':  this.addCometStreaks(planet, planetId);  break;
+        case 'sparkle_orbit':  this.addSparkleOrbit(planet, planetId);  break;
+        case 'aurora_glow':    this.addAuroraGlow(planet, planetId);    break;
+      }
+    });
+  }
+
+  private addCosmicRings(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+    const ringDefs = [
+      { color: '#FF6B9D', diameter: radius * 2 * 2.2, speed:  0.005 },
+      { color: '#C44DFF', diameter: radius * 2 * 2.9, speed: -0.003 },
+      { color: '#4DFFDB', diameter: radius * 2 * 3.6, speed:  0.004 },
+    ];
+    const rings: Mesh[] = [];
+
+    ringDefs.forEach(({ color, diameter, speed }, i) => {
+      const ring = MeshBuilder.CreateTorus(
+        `cosmicRing_${planetId}_${i}`,
+        { diameter, thickness: 0.13, tessellation: 64 },
+        this.scene,
+      );
+      ring.parent = planet;
+      ring.rotation.x = Math.PI / 2 + i * 0.35;
+      ring.rotation.z = i * 0.7;
+      ring.isPickable = false;
+
+      const mat = new StandardMaterial(`cosmicRingMat_${planetId}_${i}`, this.scene);
+      mat.emissiveColor = Color3.FromHexString(color);
+      mat.alpha = 0.8;
+      mat.backFaceCulling = false;
+      ring.material = mat;
+
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(ring);
+      rings.push(ring);
+    });
+
+    const speeds = ringDefs.map(r => r.speed);
+    const cb = () => rings.forEach((ring, i) => { ring.rotation.y += speeds[i]; });
+    this.scene.registerBeforeRender(cb);
+    this.storeCustomizationCallback(planetId, cb);
+  }
+
+  private addStarAura(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+
+    const aura = new ParticleSystem(`starAura_${planetId}`, 120, this.scene);
+    aura.emitter = planet;
+    const sphEmitter = new SphereParticleEmitter(radius * 1.05);
+    aura.particleEmitterType = sphEmitter;
+
+    const tex = new DynamicTexture(`starAuraTex_${planetId}`, 64, this.scene, false);
+    const ctx = tex.getContext();
+    const grd = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, 'rgba(255,255,220,1)');
+    grd.addColorStop(0.4, 'rgba(255,220,100,0.8)');
+    grd.addColorStop(1, 'rgba(255,200,50,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 64, 64);
+    tex.update();
+
+    aura.particleTexture = tex;
+    aura.minSize = 0.25;
+    aura.maxSize = 0.7;
+    aura.minLifeTime = 1.2;
+    aura.maxLifeTime = 3.0;
+    aura.emitRate = 45;
+    aura.blendMode = ParticleSystem.BLENDMODE_ADD;
+    aura.minEmitPower = 0.2;
+    aura.maxEmitPower = 0.7;
+    aura.gravity = new Vector3(0, 0, 0);
+    aura.color1 = new Color4(1, 1, 0.8, 1);
+    aura.color2 = new Color4(0.9, 0.8, 1, 1);
+    aura.colorDead = new Color4(0.8, 0.6, 1, 0);
+    aura.start();
+
+    this.storeCustomizationParticle(planetId, aura);
+  }
+
+  private addMoonCompanion(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+    const moonDiameter = Math.max(0.4, radius * 0.55);
+    const orbitR = radius * 2.8;
+
+    const moon = MeshBuilder.CreateSphere(
+      `moon_${planetId}`,
+      { diameter: moonDiameter, segments: 16 },
+      this.scene,
+    );
+    moon.parent = planet;
+    moon.isPickable = false;
+
+    // Cratered moon texture
+    const moonTex = new DynamicTexture(`moonTex_${planetId}`, 256, this.scene, false);
+    const mCtx = moonTex.getContext() as CanvasRenderingContext2D;
+    mCtx.fillStyle = '#888899';
+    mCtx.fillRect(0, 0, 256, 256);
+    this.addCraters(mCtx, 12, '#888899');
+    moonTex.update();
+
+    const moonMat = new StandardMaterial(`moonMat_${planetId}`, this.scene);
+    moonMat.diffuseTexture = moonTex;
+    moonMat.diffuseColor = new Color3(0.6, 0.6, 0.7);
+    moonMat.emissiveColor = new Color3(0.15, 0.15, 0.2);
+    moon.material = moonMat;
+
+    let moonAngle = 0;
+    const cb = () => {
+      moonAngle += 0.018;
+      moon.position.x = Math.cos(moonAngle) * orbitR;
+      moon.position.z = Math.sin(moonAngle) * orbitR;
+      moon.position.y = Math.sin(moonAngle * 0.6) * orbitR * 0.15;
+    };
+    this.scene.registerBeforeRender(cb);
+    this.storeCustomizationCallback(planetId, cb);
+  }
+
+  private addCrystalShield(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+
+    const shield = MeshBuilder.CreateSphere(
+      `crystalShield_${planetId}`,
+      { diameter: radius * 3.2, segments: 5 },
+      this.scene,
+    );
+    shield.parent = planet;
+    shield.isPickable = false;
+
+    const mat = new StandardMaterial(`crystalShieldMat_${planetId}`, this.scene);
+    mat.emissiveColor = new Color3(0.4, 0.9, 1.0);
+    mat.alpha = 0.18;
+    mat.wireframe = true;
+    mat.backFaceCulling = false;
+    shield.material = mat;
+
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(shield);
+
+    let t = 0;
+    const cb = () => {
+      t += 0.02;
+      const pulse = 1 + Math.sin(t) * 0.05;
+      shield.scaling.setAll(pulse);
+      shield.rotation.y += 0.003;
+      shield.rotation.z += 0.001;
+      (shield.material as StandardMaterial).alpha = 0.14 + Math.abs(Math.sin(t * 1.3)) * 0.1;
+    };
+    this.scene.registerBeforeRender(cb);
+    this.storeCustomizationCallback(planetId, cb);
+  }
+
+  private addNebulaCloud(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+
+    const nebula = new ParticleSystem(`nebulaCloud_${planetId}`, 200, this.scene);
+    nebula.emitter = planet;
+    const sphEmitter = new SphereParticleEmitter(radius * 2.0);
+    nebula.particleEmitterType = sphEmitter;
+
+    const tex = new DynamicTexture(`nebulaCloudTex_${planetId}`, 64, this.scene, false);
+    const ctx = tex.getContext();
+    const grd = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, 'rgba(200,100,255,0.6)');
+    grd.addColorStop(0.5, 'rgba(100,100,255,0.3)');
+    grd.addColorStop(1, 'rgba(50,50,200,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 64, 64);
+    tex.update();
+
+    nebula.particleTexture = tex;
+    nebula.minSize = 0.6;
+    nebula.maxSize = 1.8;
+    nebula.minLifeTime = 3.0;
+    nebula.maxLifeTime = 7.0;
+    nebula.emitRate = 25;
+    nebula.blendMode = ParticleSystem.BLENDMODE_ADD;
+    nebula.minEmitPower = 0;
+    nebula.maxEmitPower = 0.3;
+    nebula.gravity = new Vector3(0, 0, 0);
+    nebula.minAngularSpeed = -0.2;
+    nebula.maxAngularSpeed = 0.2;
+    nebula.color1 = new Color4(0.8, 0.4, 1, 0.6);
+    nebula.color2 = new Color4(0.4, 0.4, 1, 0.6);
+    nebula.colorDead = new Color4(0.6, 0.2, 0.8, 0);
+    nebula.start();
+
+    this.storeCustomizationParticle(planetId, nebula);
+  }
+
+  private addCometStreaks(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+    const orbitR = radius * 3.0;
+
+    const makeComet = (name: string): Mesh => {
+      const comet = MeshBuilder.CreateSphere(name, { diameter: Math.max(0.25, radius * 0.18), segments: 8 }, this.scene);
+      comet.parent = planet;
+      comet.isPickable = false;
+      const mat = new StandardMaterial(`${name}Mat`, this.scene);
+      mat.emissiveColor = new Color3(0.95, 0.8, 0.3);
+      comet.material = mat;
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(comet);
+      return comet;
+    };
+
+    const comet1 = makeComet(`comet1_${planetId}`);
+    const comet2 = makeComet(`comet2_${planetId}`);
+
+    const makeTail = (comet: Mesh, suffix: string): ParticleSystem => {
+      const tail = new ParticleSystem(`cometTail_${suffix}`, 60, this.scene);
+      tail.emitter = comet;
+      tail.minEmitBox = new Vector3(0, 0, 0);
+      tail.maxEmitBox = new Vector3(0, 0, 0);
+
+      const tex = new DynamicTexture(`cometTailTex_${suffix}`, 32, this.scene, false);
+      const ctx = tex.getContext();
+      const grd = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grd.addColorStop(0, 'rgba(255,200,80,1)');
+      grd.addColorStop(0.5, 'rgba(255,120,40,0.5)');
+      grd.addColorStop(1, 'rgba(200,60,0,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, 32, 32);
+      tex.update();
+
+      tail.particleTexture = tex;
+      tail.minSize = 0.1;
+      tail.maxSize = 0.35;
+      tail.minLifeTime = 0.3;
+      tail.maxLifeTime = 0.8;
+      tail.emitRate = 60;
+      tail.blendMode = ParticleSystem.BLENDMODE_ADD;
+      tail.minEmitPower = 0.3;
+      tail.maxEmitPower = 0.6;
+      tail.color1 = new Color4(1, 0.8, 0.3, 1);
+      tail.color2 = new Color4(1, 0.5, 0.1, 0.8);
+      tail.colorDead = new Color4(0.8, 0.3, 0, 0);
+      tail.start();
+      return tail;
+    };
+
+    this.storeCustomizationParticle(planetId, makeTail(comet1, `${planetId}_c1`));
+    this.storeCustomizationParticle(planetId, makeTail(comet2, `${planetId}_c2`));
+
+    let a1 = 0;
+    let a2 = Math.PI;
+    const cb = () => {
+      a1 += 0.025;
+      a2 += 0.032;
+      comet1.position.x = Math.cos(a1) * orbitR;
+      comet1.position.z = Math.sin(a1) * orbitR;
+      comet1.position.y = Math.sin(a1 * 2) * orbitR * 0.3;
+      comet2.position.x = Math.cos(a2) * orbitR * 0.75;
+      comet2.position.z = Math.sin(a2) * orbitR * 0.75;
+      comet2.position.y = Math.cos(a2 * 1.5) * orbitR * 0.2;
+    };
+    this.scene.registerBeforeRender(cb);
+    this.storeCustomizationCallback(planetId, cb);
+  }
+
+  private addSparkleOrbit(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+
+    const sparkles = new ParticleSystem(`sparkleOrbit_${planetId}`, 100, this.scene);
+    sparkles.emitter = planet;
+    const sphEmitter = new SphereParticleEmitter(radius * 1.6);
+    sparkles.particleEmitterType = sphEmitter;
+
+    const tex = new DynamicTexture(`sparkleTex_${planetId}`, 32, this.scene, false);
+    const ctx = tex.getContext();
+    const grd = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.4, 'rgba(255,255,200,0.8)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 32, 32);
+    tex.update();
+
+    sparkles.particleTexture = tex;
+    sparkles.minSize = 0.08;
+    sparkles.maxSize = 0.28;
+    sparkles.minLifeTime = 0.4;
+    sparkles.maxLifeTime = 1.4;
+    sparkles.emitRate = 55;
+    sparkles.blendMode = ParticleSystem.BLENDMODE_ADD;
+    sparkles.minEmitPower = 0;
+    sparkles.maxEmitPower = 0.15;
+    sparkles.gravity = new Vector3(0, 0, 0);
+    sparkles.color1 = new Color4(1, 1, 0.8, 1);
+    sparkles.color2 = new Color4(0.8, 0.9, 1, 1);
+    sparkles.colorDead = new Color4(1, 1, 1, 0);
+    sparkles.start();
+
+    this.storeCustomizationParticle(planetId, sparkles);
+  }
+
+  private addAuroraGlow(planet: Mesh, planetId: string): void {
+    const data = this.planetDataMap.get(planetId);
+    const radius = (data?.size ?? 2) / 2;
+    const auroraColors = ['#00FF88', '#00BBFF', '#FF44CC', '#FFAA00', '#44FFFF'];
+    const rings: Mesh[] = [];
+
+    auroraColors.forEach((color, i) => {
+      const ring = MeshBuilder.CreateTorus(
+        `aurora_${planetId}_${i}`,
+        { diameter: radius * 2 * (1.45 + i * 0.13), thickness: 0.08, tessellation: 48 },
+        this.scene,
+      );
+      ring.parent = planet;
+      ring.rotation.x = Math.PI / 2 + (i - 2) * 0.16;
+      ring.isPickable = false;
+
+      const mat = new StandardMaterial(`auroraMat_${planetId}_${i}`, this.scene);
+      mat.emissiveColor = Color3.FromHexString(color);
+      mat.alpha = 0.55;
+      mat.backFaceCulling = false;
+      ring.material = mat;
+
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(ring);
+      rings.push(ring);
+    });
+
+    let t = 0;
+    const cb = () => {
+      t += 0.012;
+      rings.forEach((ring, i) => {
+        ring.rotation.y += 0.002 * (i % 2 === 0 ? 1 : -0.7);
+        (ring.material as StandardMaterial).alpha = 0.35 + Math.abs(Math.sin(t + i * 1.3)) * 0.3;
+      });
+    };
+    this.scene.registerBeforeRender(cb);
+    this.storeCustomizationCallback(planetId, cb);
+  }
+
+  private populateCustomizationCards(planetId: string): void {
+    const grid = document.getElementById('customizationsGrid');
+    if (!grid) return;
+
+    const storedData = this.planetDataMap.get(planetId);
+    const owned = new Set<string>(storedData?.customizations ?? []);
+
+    grid.innerHTML = '';
+
+    PLANET_CUSTOMIZATIONS.forEach(customization => {
+      const isOwned = owned.has(customization.id);
+      const card = document.createElement('div');
+      card.className = `customization-card${isOwned ? ' owned' : ''}`;
+
+      card.innerHTML = `
+        <div class="customization-icon">${customization.icon}</div>
+        <div class="customization-info">
+          <div class="customization-name">${this.escapeHtml(customization.name)}</div>
+          <div class="customization-desc">${this.escapeHtml(customization.description)}</div>
+        </div>
+        <div class="customization-action">
+          ${isOwned
+            ? '<span class="owned-badge">✅ Active</span>'
+            : `<button class="buy-btn" data-cid="${this.escapeHtml(customization.id)}">💰 $${customization.price.toFixed(2)}</button>`
+          }
+        </div>
+      `;
+
+      if (!isOwned) {
+        const btn = card.querySelector<HTMLButtonElement>('.buy-btn');
+        if (btn) {
+          btn.addEventListener('click', () => {
+            this.openCustomizationPaypal(customization.id, planetId);
+          });
+        }
+      }
+
+      grid.appendChild(card);
+    });
+  }
+
+  private openCustomizationPaypal(customizationId: string, planetId: string): void {
+    const container = document.getElementById('customization-paypal-container');
+    if (!container) return;
+
+    const customization = PLANET_CUSTOMIZATIONS.find(c => c.id === customizationId);
+    if (!customization) return;
+
+    container.style.display = 'block';
+    container.innerHTML = '<p style="color:#9999ff;text-align:center;font-size:12px;padding:8px;">Loading payment…</p>';
+
+    if (typeof (window as any).paypal === 'undefined') {
+      container.innerHTML = `
+        <p style="color:#ff6b6b;text-align:center;margin:8px 0;font-size:13px;">
+          ⚠️ PayPal is not available. Please try again later.
+        </p>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    const btnDiv = document.createElement('div');
+    btnDiv.id = 'customization-paypal-btn';
+    container.appendChild(btnDiv);
+
+    const storedData = this.planetDataMap.get(planetId);
+
+    (window as any).paypal.Buttons({
+      style: { layout: 'vertical', color: 'gold', shape: 'pill', label: 'pay' },
+      createOrder: (_data: any, actions: any) => {
+        return actions.order.create({
+          purchase_units: [{
+            amount: { value: customization.price.toFixed(2), currency_code: 'USD' },
+            description: `${customization.name} cosmetic for planet "${storedData?.name ?? 'Unknown'}"`,
+          }],
+        });
+      },
+      onApprove: (_data: any, actions: any) => {
+        return actions.order.capture().then(() => {
+          const current = this.planetDataMap.get(planetId);
+          if (current) {
+            if (!current.customizations) current.customizations = [];
+            if (!current.customizations.includes(customizationId)) {
+              current.customizations.push(customizationId);
+            }
+            // Persist to Firebase
+            this.database.object(`planets/${planetId}`).update({ customizations: current.customizations });
+
+            // Apply effect visually right away
+            const planetMesh = this.planets.get(planetId);
+            if (planetMesh) {
+              this.applyPlanetCustomizations(planetMesh, planetId, [customizationId]);
+            }
+
+            // Refresh the cards to show the new "Active" badge
+            this.populateCustomizationCards(planetId);
+          }
+
+          container.style.display = 'none';
+          this.playSound('save');
+          alert(`✨ ${customization.icon} ${customization.name} unlocked! Your planet now sparkles with cosmic magic!`);
+        });
+      },
+      onError: (err: any) => {
+        console.error('PayPal customization error:', err);
+        container.innerHTML = `
+          <p style="color:#ff6b6b;text-align:center;font-size:13px;padding:8px;">
+            Payment failed. Please try again.
+          </p>`;
+      },
+      onCancel: () => {
+        container.style.display = 'none';
+      },
+    }).render('#customization-paypal-btn');
   }
 
   private setupKeyboardControls(): void {
