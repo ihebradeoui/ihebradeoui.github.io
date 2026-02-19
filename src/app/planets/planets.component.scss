@@ -384,7 +384,7 @@ h2 {
 
 .leaderboard-content {
   padding: 15px;
-  max-height: calc(80vh - 140px);
+  max-height: 400px; /* Limit to ~5 items (80px per item) */
   overflow-y: auto;
 }
 
@@ -421,37 +421,84 @@ h2 {
 }
 
 .leaderboard-item {
+  display: flex;
+  align-items: center;
   padding: 15px;
   margin-bottom: 10px;
-  background: rgba(106, 90, 205, 0.1);
-  border: 1px solid rgba(138, 127, 255, 0.3);
   border-radius: 12px;
   transition: all 0.3s ease;
   cursor: pointer;
+  border: 1px solid rgba(138, 127, 255, 0.3);
 }
 
 .leaderboard-item:hover {
-  background: rgba(106, 90, 205, 0.2);
-  border-color: rgba(138, 127, 255, 0.5);
   transform: translateX(-5px);
   box-shadow: 
-    0 4px 15px rgba(106, 90, 205, 0.3),
-    inset 0 0 15px rgba(138, 127, 255, 0.1);
+    0 4px 15px rgba(106, 90, 205, 0.4),
+    inset 0 0 20px rgba(138, 127, 255, 0.15);
+  border-color: rgba(138, 127, 255, 0.6);
 }
 
+/* Rank-based brightness - higher ranks are brighter */
 .leaderboard-item.rank-1 {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 215, 0, 0.05));
-  border-color: rgba(255, 215, 0, 0.4);
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(255, 215, 0, 0.15));
+  border-color: rgba(255, 215, 0, 0.5);
+}
+
+.leaderboard-item.rank-1:hover {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.4), rgba(255, 215, 0, 0.2));
+  border-color: rgba(255, 215, 0, 0.7);
 }
 
 .leaderboard-item.rank-2 {
-  background: linear-gradient(135deg, rgba(192, 192, 192, 0.15), rgba(192, 192, 192, 0.05));
-  border-color: rgba(192, 192, 192, 0.4);
+  background: linear-gradient(135deg, rgba(192, 192, 192, 0.25), rgba(192, 192, 192, 0.12));
+  border-color: rgba(192, 192, 192, 0.45);
+}
+
+.leaderboard-item.rank-2:hover {
+  background: linear-gradient(135deg, rgba(192, 192, 192, 0.35), rgba(192, 192, 192, 0.17));
+  border-color: rgba(192, 192, 192, 0.65);
 }
 
 .leaderboard-item.rank-3 {
-  background: linear-gradient(135deg, rgba(205, 127, 50, 0.15), rgba(205, 127, 50, 0.05));
-  border-color: rgba(205, 127, 50, 0.4);
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.22), rgba(205, 127, 50, 0.1));
+  border-color: rgba(205, 127, 50, 0.42);
+}
+
+.leaderboard-item.rank-3:hover {
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.32), rgba(205, 127, 50, 0.15));
+  border-color: rgba(205, 127, 50, 0.62);
+}
+
+.leaderboard-item.rank-4 {
+  background: linear-gradient(135deg, rgba(138, 127, 255, 0.20), rgba(138, 127, 255, 0.08));
+  border-color: rgba(138, 127, 255, 0.4);
+}
+
+.leaderboard-item.rank-4:hover {
+  background: linear-gradient(135deg, rgba(138, 127, 255, 0.3), rgba(138, 127, 255, 0.13));
+  border-color: rgba(138, 127, 255, 0.6);
+}
+
+.leaderboard-item.rank-5 {
+  background: linear-gradient(135deg, rgba(138, 127, 255, 0.18), rgba(138, 127, 255, 0.06));
+  border-color: rgba(138, 127, 255, 0.35);
+}
+
+.leaderboard-item.rank-5:hover {
+  background: linear-gradient(135deg, rgba(138, 127, 255, 0.28), rgba(138, 127, 255, 0.11));
+  border-color: rgba(138, 127, 255, 0.55);
+}
+
+/* Lower ranks get progressively dimmer */
+.leaderboard-item:not(.rank-1):not(.rank-2):not(.rank-3):not(.rank-4):not(.rank-5) {
+  background: linear-gradient(135deg, rgba(106, 90, 205, 0.15), rgba(106, 90, 205, 0.05));
+  border-color: rgba(138, 127, 255, 0.3);
+}
+
+.leaderboard-item:not(.rank-1):not(.rank-2):not(.rank-3):not(.rank-4):not(.rank-5):hover {
+  background: linear-gradient(135deg, rgba(106, 90, 205, 0.25), rgba(106, 90, 205, 0.1));
+  border-color: rgba(138, 127, 255, 0.5);
 }
 
 .leaderboard-rank {
@@ -483,8 +530,9 @@ h2 {
 }
 
 .leaderboard-info {
-  display: inline-block;
-  vertical-align: middle;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   width: calc(100% - 50px);
 }
 
@@ -492,10 +540,11 @@ h2 {
   color: #fff;
   font-size: 16px;
   font-weight: 600;
-  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  margin-right: 10px;
 }
 
 .leaderboard-streak {
@@ -503,21 +552,19 @@ h2 {
   font-size: 13px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .leaderboard-days {
-  background: rgba(138, 127, 255, 0.2);
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-weight: 600;
-  color: #8a7fff;
+  background: rgba(138, 127, 255, 0.3);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
 }
 
 .leaderboard-planet {
-  color: #9999ff;
-  font-size: 11px;
-  margin-top: 4px;
-  font-style: italic;
-  opacity: 0.8;
+  display: none; /* Hide planet ID as it's not needed in the simplified view */
 }

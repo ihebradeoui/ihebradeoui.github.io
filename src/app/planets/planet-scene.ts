@@ -1950,11 +1950,11 @@ export class PlanetScene {
     let html = '';
     leaderboardData.forEach((entry, index) => {
       const rank = index + 1;
-      const rankClass = rank <= 3 ? `rank-${rank}` : '';
+      const rankClass = rank <= 5 ? `rank-${rank}` : '';
       const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
       
       html += `
-        <div class="leaderboard-item ${rankClass}">
+        <div class="leaderboard-item ${rankClass}" data-planet-id="${this.escapeHtml(entry.planetId)}">
           <span class="leaderboard-rank">${medal || rank}</span>
           <div class="leaderboard-info">
             <div class="leaderboard-name">${this.escapeHtml(entry.name)}</div>
@@ -1962,13 +1962,31 @@ export class PlanetScene {
               <span class="leaderboard-days">${entry.daysOwned} day${entry.daysOwned !== 1 ? 's' : ''}</span>
               <span>🔥</span>
             </div>
-            <div class="leaderboard-planet">Planet: ${this.escapeHtml(entry.planetId)}</div>
           </div>
         </div>
       `;
     });
 
     content.innerHTML = html;
+
+    // Add click handlers to navigate to planets
+    const items = content.querySelectorAll('.leaderboard-item');
+    items.forEach((item) => {
+      item.addEventListener('click', () => {
+        const planetId = item.getAttribute('data-planet-id');
+        if (planetId) {
+          const planet = this.planets.get(planetId);
+          if (planet) {
+            this.followPlanet(planet, planetId);
+            // Close the leaderboard panel
+            const panel = document.getElementById('leaderboardPanel');
+            if (panel) {
+              panel.classList.remove('open');
+            }
+          }
+        }
+      });
+    });
   }
 
   private escapeHtml(text: string): string {
