@@ -542,13 +542,137 @@ h2 {
   min-width: 0;
 }
 
-.leaderboard-days {
-  background: rgba(138, 127, 255, 0.3);
-  padding: 4px 10px;
-  border-radius: 8px;
+/* ─── Planet Cosmetics Section ─── */
+.cosmetics-section {
+  margin-top: 28px;
+  padding-top: 0;
+}
+
+.cosmetics-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.cosmetics-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(138, 127, 255, 0.5), transparent);
+}
+
+.cosmetics-divider-label {
+  font-size: 16px;
   font-weight: 700;
-  color: #fff;
-  font-size: 13px;
+  color: #b8b8ff;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.cosmetics-subtitle {
+  text-align: center;
+  color: #9999cc;
+  font-size: 13px;
+  font-style: italic;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.customizations-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.customization-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.7), rgba(22, 33, 62, 0.7));
+  border: 1px solid rgba(138, 127, 255, 0.25);
+  transition: all 0.3s ease;
+}
+
+.customization-card:hover {
+  border-color: rgba(138, 127, 255, 0.5);
+  background: linear-gradient(135deg, rgba(40, 30, 70, 0.8), rgba(30, 45, 80, 0.8));
+  transform: translateX(3px);
+  box-shadow: 0 4px 15px rgba(106, 90, 205, 0.3);
+}
+
+.customization-card.owned {
+  border-color: rgba(0, 255, 136, 0.4);
+  background: linear-gradient(135deg, rgba(0, 60, 40, 0.5), rgba(0, 40, 60, 0.5));
+}
+
+.customization-card.owned:hover {
+  border-color: rgba(0, 255, 136, 0.6);
+  box-shadow: 0 4px 15px rgba(0, 200, 100, 0.25);
+}
+
+.customization-icon {
+  font-size: 28px;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 6px rgba(138, 127, 255, 0.7));
+  line-height: 1;
+}
+
+.customization-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.customization-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e0e0ff;
+  margin-bottom: 3px;
+}
+
+.customization-desc {
+  font-size: 11px;
+  color: #8888bb;
+  line-height: 1.4;
+}
+
+.customization-action {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.buy-btn {
+  padding: 7px 13px;
+  background: linear-gradient(135deg, #6a5acd 0%, #8a7fff 100%);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(106, 90, 205, 0.4);
+  letter-spacing: 0.5px;
+}
+
+.buy-btn:hover {
+  background: linear-gradient(135deg, #7a6add 0%, #9a8fff 100%);
+  transform: scale(1.07);
+  box-shadow: 0 4px 14px rgba(106, 90, 205, 0.6);
+}
+
+.buy-btn:active {
+  transform: scale(1.02);
+}
+
+.owned-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: #00ff88;
+  white-space: nowrap;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
 }
