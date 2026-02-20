@@ -563,6 +563,24 @@ h2 {
   margin-bottom: 12px;
 }
 
+.custom-cards-scroll {
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: rgba(26, 26, 46, 0.3);
+    border-radius: 10px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #6a5acd, #8a7fff);
+    border-radius: 10px;
+  }
+}
+
 .custom-cards-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -812,8 +830,8 @@ h2 {
 /* ── Auth Status Bar ── */
 .auth-status {
   position: fixed;
-  top: 14px;
-  right: 18px;
+  top: 20px;
+  left: 20px;
   z-index: 1000;
   display: flex;
   align-items: center;

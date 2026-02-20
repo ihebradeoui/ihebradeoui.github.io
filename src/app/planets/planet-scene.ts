@@ -4467,23 +4467,11 @@ export class PlanetScene {
 
   private getAllCustomizationIds(): string[] {
     return [
-      'cosmic_rings', 'star_aura', 'moon_companion', 'crystal_shield', 'nebula_cloud', 'comet_streaks', 'sparkle_orbit', 'aurora_glow',
-      'fairy_dust', 'sakura_petals', 'snow_globe', 'firefly_dance', 'spirit_orbs', 'ember_sparks', 'poison_cloud', 'stardust_rain',
-      'candy_confetti', 'butterfly_shower', 'ghost_wisps', 'crystal_shards', 'love_hearts', 'sand_vortex', 'cosmic_web', 'music_particles',
-      'quantum_foam', 'rainbow_mist', 'void_particles', 'ancient_dust', 'water_droplets', 'neon_rain', 'phoenix_sparks', 'icy_flakes',
-      'solar_wind', 'toxic_bubbles', 'dream_wisps', 'golden_sparkles', 'galaxy_motes', 'plasma_sparks',
-      'dark_matter_shell', 'plasma_mantle', 'jade_aura', 'golden_divine', 'void_aura', 'lunar_glow', 'flame_shell', 'ice_shell',
-      'thunder_mantle', 'prismatic_shell', 'spectral_veil', 'solar_corona', 'nature_bloom', 'holographic_field', 'shadow_cloak',
-      'rose_quartz_glow', 'sapphire_aura', 'emerald_pulse', 'ruby_glow', 'obsidian_shell', 'amethyst_haze', 'topaz_shimmer',
-      'opal_glow', 'divine_light_aura', 'abyssal_dark',
-      'rainbow_rings', 'neon_rings', 'pearl_rings', 'fire_ring', 'ice_ring', 'void_ring', 'golden_halo_ring', 'radiant_halo_rings',
-      'eclipse_ring', 'atomic_rings', 'double_helix_ring', 'spiral_rings', 'electric_hoop', 'cosmic_crown_rings', 'sakura_ring',
-      'triple_moons', 'asteroid_belt_orbit', 'gem_orbit', 'crystal_orbit', 'fairy_lights_orbit', 'satellite_swarm', 'lotus_orbit',
-      'clockwork_orbit', 'soul_lanterns_orbit', 'star_companions', 'diamond_orbit', 'ancient_orbs', 'binary_moons',
-      'prism_towers_orbit', 'flower_companions', 'sacred_geometry_orbit', 'ice_pillar_orbit', 'thunder_orbs_orbit',
-      'mini_planets_orbit', 'comet_companions',
-      'supernova_pulse', 'vortex_storm', 'aurora_pillars', 'galaxy_swirl_effect', 'time_ripple', 'eclipse_shadow',
-      'northern_lights_effect', 'cosmic_bloom_effect', 'dimensional_rift', 'heartbeat_pulse',
+      'cosmic_rings', 'star_aura', 'moon_companion', 'crystal_shield',
+      'nebula_cloud', 'comet_streaks', 'sparkle_orbit', 'aurora_glow',
+      'stardust_rain', 'phoenix_sparks', 'solar_wind', 'plasma_sparks',
+      'dark_matter_shell', 'flame_shell', 'ice_shell', 'golden_divine',
+      'rainbow_rings', 'atomic_rings', 'supernova_pulse', 'gem_orbit',
     ];
   }
 
@@ -4942,7 +4930,8 @@ export class PlanetScene {
     const colors = [new Color3(1,0.2,0.2), new Color3(0.2,1,0.4), new Color3(0.2,0.5,1), new Color3(1,0.9,0.2), new Color3(0.8,0.2,1), new Color3(1,0.5,0.1)];
     const objs: {mesh: Mesh; angle: number}[] = [];
     for (let i = 0; i < 6; i++) {
-      const m = MeshBuilder.CreateSphere('custom_gem_orbit' + i + '_' + planetId, {diameter: radius*0.3}, this.scene);
+      // Octahedron (type 1) looks like a real faceted gemstone/diamond
+      const m = MeshBuilder.CreatePolyhedron('custom_gem_orbit' + i + '_' + planetId, {type: 1, size: radius * 0.15}, this.scene);
       m.parent = planet;
       const mat = new PBRMaterial('custom_gem_orbitMat' + i + '_' + planetId, this.scene);
       mat.albedoColor = colors[i]; mat.emissiveColor = colors[i].scale(0.5); mat.metallic = 0; mat.roughness = 0;
@@ -4958,6 +4947,8 @@ export class PlanetScene {
         o.mesh.position.x = Math.cos(o.angle) * r2;
         o.mesh.position.z = Math.sin(o.angle) * r2;
         o.mesh.position.y = Math.sin(o.angle * 1.2) * r2 * 0.1;
+        o.mesh.rotation.y += 0.02;
+        o.mesh.rotation.x += 0.01;
       });
     };
     this.trackCustomizationCallback(planetId, cb);
