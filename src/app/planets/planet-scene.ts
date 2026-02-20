@@ -4167,6 +4167,7 @@ export class PlanetScene {
     const sys = new ParticleSystem(`custom_nebula_${planetId}`, 200, this.scene);
     sys.emitter = planet;
     sys.particleEmitterType = new SphereParticleEmitter(radius * 1.5);
+    sys.particleTexture = this.makeDefaultParticleTexture(`custom_nebula_${planetId}`);
     sys.minSize = 0.5; sys.maxSize = 1.5;
     sys.minLifeTime = 4; sys.maxLifeTime = 8;
     sys.emitRate = 25;
@@ -4186,6 +4187,7 @@ export class PlanetScene {
     const sys = new ParticleSystem(`custom_comets_${planetId}`, 150, this.scene);
     sys.emitter = planet;
     sys.particleEmitterType = new SphereParticleEmitter(radius * 2.2);
+    sys.particleTexture = this.makeDefaultParticleTexture(`custom_comets_${planetId}`);
     sys.minSize = 0.08; sys.maxSize = 0.2;
     sys.minLifeTime = 0.6; sys.maxLifeTime = 1.8;
     sys.emitRate = 40;
@@ -4230,7 +4232,7 @@ export class PlanetScene {
     sys.minLifeTime = 1.5; sys.maxLifeTime = 3;
     sys.emitRate = 70;
     sys.blendMode = ParticleSystem.BLENDMODE_ADD;
-    sys.minEmitPower = 0; sys.maxEmitPower = 0.05;
+    sys.minEmitPower = 0.05; sys.maxEmitPower = 0.25;
     sys.minAngularSpeed = -1; sys.maxAngularSpeed = 1;
     sys.color1 = new Color4(1, 1, 0.9, 1);
     sys.color2 = new Color4(0.9, 0.95, 1, 0.8);
@@ -4493,12 +4495,26 @@ export class PlanetScene {
     this.trackCustomizationCallback(planetId, cb);
   }
 
+  private makeDefaultParticleTexture(id: string): DynamicTexture {
+    const tex = new DynamicTexture('ptex_' + id, 32, this.scene, false);
+    const ctx = tex.getContext();
+    const grd = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.4, 'rgba(255,255,255,0.8)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 32, 32);
+    tex.update();
+    return tex;
+  }
+
   private makeParticleEffect(id: string, planet: Mesh, radius: number, planetId: string,
     capacity: number, emitRadius: number, minSize: number, maxSize: number, emitRate: number,
     minLife: number, maxLife: number, c1: Color4, c2: Color4, cDead: Color4, power: number = 0.1): void {
     const sys = new ParticleSystem('custom_' + id + '_' + planetId, capacity, this.scene);
     sys.emitter = planet;
     sys.particleEmitterType = new SphereParticleEmitter(emitRadius);
+    sys.particleTexture = this.makeDefaultParticleTexture('custom_' + id + '_' + planetId);
     sys.minSize = minSize;
     sys.maxSize = maxSize;
     sys.minLifeTime = minLife;

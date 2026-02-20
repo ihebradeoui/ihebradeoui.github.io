@@ -45,12 +45,14 @@
 
 .modal-content {
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  margin: 8% auto;
+  margin: 2vh auto;
   padding: 40px;
   border: 2px solid rgba(106, 90, 205, 0.4);
   border-radius: 20px;
   width: 85%;
   max-width: 550px;
+  max-height: 94vh;
+  overflow-y: auto;
   color: #fff;
   box-shadow: 
     0 8px 32px rgba(0, 0, 0, 0.5),
@@ -58,7 +60,7 @@
     inset 0 0 30px rgba(106, 90, 205, 0.05);
   animation: slideIn 0.4s ease-out;
   position: relative;
-  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .modal-content::before {
@@ -830,8 +832,9 @@ h2 {
 /* ── Auth Status Bar ── */
 .auth-status {
   position: fixed;
-  top: 20px;
-  left: 20px;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1000;
   display: flex;
   align-items: center;
