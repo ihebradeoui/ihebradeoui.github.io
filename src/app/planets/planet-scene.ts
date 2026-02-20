@@ -4302,6 +4302,24 @@ export class PlanetScene {
     const authModalClose = document.getElementById('authModalClose');
     const authSignOutBtn = document.getElementById('authSignOutBtn');
     const authSignInBtn = document.getElementById('authSignInBtn');
+    const loginTab = document.getElementById('loginTab');
+    const registerTab = document.getElementById('registerTab');
+
+    // Tab switching (replaces inline onclick handlers)
+    if (loginTab && registerTab && loginForm && registerForm) {
+      loginTab.addEventListener('click', () => {
+        (loginForm as HTMLElement).style.display = 'block';
+        (registerForm as HTMLElement).style.display = 'none';
+        loginTab.classList.add('active');
+        registerTab.classList.remove('active');
+      });
+      registerTab.addEventListener('click', () => {
+        (registerForm as HTMLElement).style.display = 'block';
+        (loginForm as HTMLElement).style.display = 'none';
+        registerTab.classList.add('active');
+        loginTab.classList.remove('active');
+      });
+    }
 
     if (authModalClose) {
       authModalClose.addEventListener('click', () => {
@@ -4373,16 +4391,23 @@ export class PlanetScene {
     }
   }
 
+  private readonly BASE_CUSTOMIZATION_SLOTS = 2;
+  private readonly STREAK_DIVISOR = 3;
+  private readonly MAX_CUSTOMIZATION_SLOTS = 108;
+
   private updateAuthStatusUI(): void {
     const userDisplay = document.getElementById('authUserDisplay');
     const signOutBtn = document.getElementById('authSignOutBtn');
     const signInBtn = document.getElementById('authSignInBtn');
     if (this.currentUser) {
-      if (userDisplay) userDisplay.textContent = `\u{1F464} ${this.currentUser.email}`;
+      const email = this.currentUser.email || '';
+      const atIndex = email.indexOf('@');
+      const displayEmail = atIndex > 0 ? email.substring(0, Math.min(3, atIndex)) + '***@' + email.substring(atIndex + 1) : email;
+      if (userDisplay) userDisplay.textContent = '\uD83D\uDC64 ' + displayEmail;
       if (signOutBtn) signOutBtn.style.display = 'inline-block';
       if (signInBtn) signInBtn.style.display = 'none';
     } else {
-      if (userDisplay) userDisplay.textContent = '\u{1F464} Not logged in';
+      if (userDisplay) userDisplay.textContent = '\uD83D\uDC64 Not logged in';
       if (signOutBtn) signOutBtn.style.display = 'none';
       if (signInBtn) signInBtn.style.display = 'inline-block';
     }
@@ -4397,11 +4422,11 @@ export class PlanetScene {
     const MS_PER_DAY = 1000 * 60 * 60 * 24;
     this.planetDataMap.forEach((data) => {
       if (data.userId && this.currentUser && data.userId === this.currentUser.uid && data.claimedAt) {
-        const days = Math.max(0, Math.floor((now - data.claimedAt) / MS_PER_DAY));
-        if (days > maxStreak) maxStreak = days;
+        const ownershipDays = Math.max(0, Math.floor((now - data.claimedAt) / MS_PER_DAY));
+        if (ownershipDays > maxStreak) maxStreak = ownershipDays;
       }
     });
-    const slots = Math.min(2 + Math.floor(maxStreak / 3), 108);
+    const slots = Math.min(this.BASE_CUSTOMIZATION_SLOTS + Math.floor(maxStreak / this.STREAK_DIVISOR), this.MAX_CUSTOMIZATION_SLOTS);
     if (streakDisplay) streakDisplay.style.display = 'flex';
     if (streakDaysEl) streakDaysEl.textContent = String(maxStreak);
     if (customSlotsEl) customSlotsEl.textContent = String(slots);
