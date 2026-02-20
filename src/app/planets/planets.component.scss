@@ -553,30 +553,156 @@ h2 {
   flex-shrink: 0;
 }
 
-.customization-option {
+/* ── Planet Customization Cards ─────────────────────────────────────────── */
+.custom-cards-label {
+  font-weight: 600;
+  font-size: 15px;
+  color: #b8b8ff;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.custom-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.custom-card {
+  position: relative;
+
+  /* Hide the real checkbox but keep it focusable */
+  input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 1px;
+    height: 1px;
+    top: 0;
+    left: 0;
+  }
+
+  label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 16px 10px 14px;
+    background: rgba(18, 16, 40, 0.82);
+    border: 1.5px solid rgba(138, 127, 255, 0.18);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.22s ease, border-color 0.22s ease,
+                background 0.22s ease, box-shadow 0.22s ease;
+    position: relative;
+    overflow: hidden;
+    gap: 5px;
+    min-height: 100px;
+    justify-content: center;
+    user-select: none;
+
+    /* Subtle inner shine layer (hidden by default) */
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        115deg,
+        transparent 25%,
+        rgba(138, 127, 255, 0.07) 50%,
+        transparent 75%
+      );
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    &:hover {
+      border-color: rgba(138, 127, 255, 0.52);
+      background: rgba(35, 28, 72, 0.92);
+      transform: translateY(-3px);
+      box-shadow: 0 6px 22px rgba(106, 90, 205, 0.28);
+    }
+  }
+
+  /* Active / checked state */
+  input:checked + label {
+    border-color: rgba(138, 127, 255, 0.88);
+    background: rgba(80, 58, 160, 0.28);
+    box-shadow:
+      0 0 22px rgba(138, 127, 255, 0.38),
+      inset 0 0 14px rgba(138, 127, 255, 0.10);
+
+    /* Running shine sweep */
+    &::after {
+      opacity: 1;
+      animation: cardShine 2.6s ease-in-out infinite;
+    }
+
+    .custom-card-badge {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .custom-card-icon {
+      transform: scale(1.18);
+      filter: drop-shadow(0 0 9px rgba(138, 127, 255, 0.85));
+    }
+
+    .custom-card-name {
+      color: #fff;
+    }
+  }
+}
+
+@keyframes cardShine {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+.custom-card-badge {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6a5acd, #a87fff);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: rgba(26, 26, 46, 0.6);
-  border: 1px solid rgba(138, 127, 255, 0.2);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #d0d0ff;
-  transition: all 0.2s ease;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.3);
+  transition: opacity 0.2s ease,
+              transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 2px 8px rgba(106, 90, 205, 0.55);
+  pointer-events: none;
+}
 
-  &:hover {
-    background: rgba(138, 127, 255, 0.2);
-    border-color: rgba(138, 127, 255, 0.5);
-    color: #fff;
-  }
+.custom-card-icon {
+  font-size: 28px;
+  line-height: 1;
+  transition: transform 0.25s ease, filter 0.25s ease;
+  filter: drop-shadow(0 0 4px rgba(138, 127, 255, 0.4));
+}
 
-  input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-    accent-color: #8a7fff;
-    flex-shrink: 0;
-  }
+.custom-card-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #bbb4e8;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  transition: color 0.22s ease;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.custom-card-desc {
+  font-size: 9.5px;
+  color: rgba(168, 158, 230, 0.62);
+  line-height: 1.35;
+  margin-top: 1px;
 }

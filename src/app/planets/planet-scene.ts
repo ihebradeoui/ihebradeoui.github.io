@@ -3873,6 +3873,15 @@ export class PlanetScene {
       new Color3(1.0, 0.85, 0.2),
       new Color3(0.5, 1.0, 0.4),
     ];
+    // Each ring spins on a different axis at a different speed (some CW, some CCW)
+    const rotSpeeds = [
+      { x: 0.007,  y: 0.003,  z: 0 },
+      { x: 0,      y: -0.011, z: 0.004 },
+      { x: -0.005, y: 0.014,  z: 0 },
+      { x: 0.009,  y: -0.006, z: 0.003 },
+    ];
+
+    const ringRefs: Mesh[] = [];
     ringColors.forEach((color, i) => {
       const ring = MeshBuilder.CreateTorus(
         `custom_cosmicRing${i}_${planetId}`,
@@ -3890,7 +3899,19 @@ export class PlanetScene {
       mat.backFaceCulling = false;
       ring.material = mat;
       if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(ring);
+      ringRefs.push(ring);
     });
+
+    // Animate each ring independently
+    const cb = () => {
+      ringRefs.forEach((ring, i) => {
+        if (ring.isDisposed()) return;
+        ring.rotation.x += rotSpeeds[i].x;
+        ring.rotation.y += rotSpeeds[i].y;
+        ring.rotation.z += rotSpeeds[i].z;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
   }
 
   // ── Star Aura ────────────────────────────────────────────────────────────────
@@ -3911,11 +3932,16 @@ export class PlanetScene {
     glowSphere.material = glowMat;
     if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(glowSphere);
 
+    // Pulse scale + cycle through warm hues (gold → orange → white → gold)
     let t = 0;
     const cb = () => {
       if (glowSphere.isDisposed()) return;
       t += 0.04;
       glowSphere.scaling.setAll(1 + Math.sin(t) * 0.12);
+      // Colour cycle: r always 1, g oscillates 0.6–1, b oscillates 0.1–0.6
+      const g = 0.75 + Math.sin(t * 0.7) * 0.2;
+      const b = 0.35 + Math.sin(t * 0.5 + 1.0) * 0.25;
+      glowMat.emissiveColor.set(1, Math.max(0.6, g), Math.max(0.1, b));
     };
     this.trackCustomizationCallback(planetId, cb);
 
@@ -3925,11 +3951,11 @@ export class PlanetScene {
     sys.particleEmitterType = new SphereParticleEmitter(radius * 0.65);
     const tex = new DynamicTexture(`custom_starAuraTex_${planetId}`, 64, this.scene, false);
     const ctx = tex.getContext();
-    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(255, 255, 200, 1)');
-    g.addColorStop(0.5, 'rgba(255, 200, 80, 0.6)');
-    g.addColorStop(1, 'rgba(255, 150, 0, 0)');
-    ctx.fillStyle = g;
+    const g2 = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g2.addColorStop(0, 'rgba(255, 255, 200, 1)');
+    g2.addColorStop(0.5, 'rgba(255, 200, 80, 0.6)');
+    g2.addColorStop(1, 'rgba(255, 150, 0, 0)');
+    ctx.fillStyle = g2;
     ctx.fillRect(0, 0, 64, 64);
     tex.update();
     sys.particleTexture = tex;
@@ -3989,8 +4015,14 @@ export class PlanetScene {
       if (shield.isDisposed()) return;
       t += 0.025;
       shield.scaling.setAll(1 + Math.sin(t) * 0.08);
-      shield.rotation.y += 0.005;
-      mat.alpha = 0.15 + Math.abs(Math.sin(t * 1.3)) * 0.12;
+      // Dual-axis spin at different rates
+      shield.rotation.y += 0.007;
+      shield.rotation.x += 0.004;
+      // Colour shift between violet and cyan
+      const r = 0.4 + Math.sin(t * 0.6) * 0.3;
+      const b = 0.9 + Math.sin(t * 0.4 + 1.2) * 0.1;
+      mat.emissiveColor.set(Math.max(0.1, r), 0.15 + Math.abs(Math.sin(t * 0.9)) * 0.2, b);
+      mat.alpha = 0.13 + Math.abs(Math.sin(t * 1.3)) * 0.12;
     };
     this.trackCustomizationCallback(planetId, cb);
   }
@@ -4080,6 +4112,12 @@ export class PlanetScene {
       { color: new Color3(0.5, 0, 1.0),  scale: 1.36, alpha: 0.10 },
       { color: new Color3(0, 0.8, 1.0),  scale: 1.44, alpha: 0.08 },
     ];
+    // Each shell spins on a different axis at a different rate
+    const spinAxes = [
+      { y: 0.006, x: 0 },
+      { y: -0.009, x: 0.004 },
+      { y: 0.004,  x: -0.007 },
+    ];
 
     const auroraRefs: { mesh: Mesh; mat: StandardMaterial; baseColor: Color3 }[] = [];
 
@@ -4106,6 +4144,10 @@ export class PlanetScene {
       t += 0.012;
       auroraRefs.forEach((ref, i) => {
         if (ref.mesh.isDisposed()) return;
+        // Rotate each shell on its own axis
+        ref.mesh.rotation.y += spinAxes[i].y;
+        ref.mesh.rotation.x += spinAxes[i].x;
+        // Colour shift
         const shift = Math.sin(t + i * 1.2);
         ref.mat.emissiveColor = new Color3(
           Math.max(0, ref.baseColor.r + shift * 0.3),
