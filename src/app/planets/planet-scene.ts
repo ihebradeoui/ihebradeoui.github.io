@@ -28,7 +28,6 @@ import {
   DefaultRenderingPipeline,
   LensFlareSystem,
   LensFlare,
-  DepthOfFieldEffectBlurLevel,
 } from '@babylonjs/core';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
@@ -146,6 +145,7 @@ export class PlanetScene {
   private currentUser: User | null = null;
   private authUnsubscribe: (() => void) | null = null;
   private planetTooltip: HTMLDivElement | null = null;
+  private sunUpdateInterval: number | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -225,12 +225,12 @@ export class PlanetScene {
     this.camera.wheelPrecision = 20;
     this.camera.panningSensibility = 0;
 
-    // Create enhanced glow layer for premium luminous effects
+    // Glow layer — lightweight, small kernel so it doesn't bleed across the screen
     this.glowLayer = new GlowLayer('glow', scene, {
-      mainTextureFixedSize: 1024,
-      blurKernelSize: 128,
+      mainTextureFixedSize: 256,
+      blurKernelSize: 32,
     });
-    this.glowLayer.intensity = 1.4;
+    this.glowLayer.intensity = 0.4;
 
     // Create sun at center
     this.createSun();
@@ -297,9 +297,6 @@ export class PlanetScene {
     this.scene.registerBeforeRender(() => {
       time += 0.01; // Increment time for smooth animations
 
-      // Run registered per-frame callbacks (e.g. sun plasma animation)
-      this.animationCallbacks.forEach(cb => cb());
-      
       // Rotate sun slowly
       if (this.sun) {
         this.sun.rotation.y += 0.00025;
@@ -374,36 +371,35 @@ export class PlanetScene {
   }
 
   private createSun(): void {
-    // Photorealistic sun — ultra-high-res animated plasma surface
+    // Sun sphere — reasonable detail, not over-large
     this.sun = MeshBuilder.CreateSphere(
       'sun',
-      { diameter: 10, segments: 256 },
+      { diameter: 8, segments: 64 },
       this.scene,
     );
     this.sun.position = Vector3.Zero();
 
     const sunMaterial = new PBRMaterial('sunMaterial', this.scene);
 
-    // Deep orange-yellow core glow
-    sunMaterial.emissiveColor = new Color3(1.5, 0.92, 0.28);
-    sunMaterial.emissiveIntensity = 2.2;
+    // Emissive values ≤ 1.0 so bloom doesn't blow out and sun shrinks with zoom
+    sunMaterial.emissiveColor = new Color3(1.0, 0.82, 0.25);
+    sunMaterial.emissiveIntensity = 0.9;
     sunMaterial.albedoColor = new Color3(1.0, 0.6, 0.1);
     sunMaterial.metallic = 0.0;
     sunMaterial.roughness = 0.9;
 
-    // Animated plasma surface via DynamicTexture updated each frame
-    const sunTexture = new DynamicTexture('sunTexture', 2048, this.scene, false);
+    // Draw sun surface once at startup (baked texture — no per-frame update)
+    const sunTexture = new DynamicTexture('sunTexture', 512, this.scene, false);
     this.drawSunSurface(sunTexture, 0);
     sunMaterial.emissiveTexture = sunTexture;
     this.sun.material = sunMaterial;
 
-    // Register frame-by-frame plasma animation
+    // Slow animated update: redraw at ~1 fps to save GPU/CPU
     let sunTime = 0;
-    const sunAnimCb = () => {
-      sunTime += 0.012;
+    this.sunUpdateInterval = window.setInterval(() => {
+      sunTime += 0.3;
       this.drawSunSurface(sunTexture, sunTime);
-    };
-    this.animationCallbacks.push(sunAnimCb);
+    }, 1000);
 
     if (this.glowLayer) {
       this.glowLayer.addIncludedOnlyMesh(this.sun);
@@ -415,70 +411,45 @@ export class PlanetScene {
 
   private drawSunSurface(texture: DynamicTexture, t: number): void {
     const ctx = texture.getContext() as CanvasRenderingContext2D;
-    const S = 2048;
+    const S = 512;
 
-    // Deep chromosphere base gradient
+    // Chromosphere gradient
     const bg = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    bg.addColorStop(0,   '#FFE066');
-    bg.addColorStop(0.25,'#FFB800');
-    bg.addColorStop(0.55,'#FF7200');
-    bg.addColorStop(0.8, '#CC3800');
-    bg.addColorStop(1,   '#881800');
+    bg.addColorStop(0,    '#FFE066');
+    bg.addColorStop(0.3,  '#FFB800');
+    bg.addColorStop(0.6,  '#FF7200');
+    bg.addColorStop(0.85, '#CC3800');
+    bg.addColorStop(1,    '#881800');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, S, S);
 
-    // Animated convection cells (granulation)
-    for (let i = 0; i < 180; i++) {
+    // Convection cells — reduced count for performance
+    for (let i = 0; i < 60; i++) {
       const seed = i * 137.508;
       const cx = (Math.sin(seed) * 0.5 + 0.5) * S;
       const cy = (Math.cos(seed * 0.7) * 0.5 + 0.5) * S;
-      const r  = 18 + (i % 7) * 8;
-      const phase = t * (0.3 + (i % 5) * 0.08);
-      const brightness = 0.55 + Math.sin(phase) * 0.25;
-      const rr = 255; // red channel is always at full intensity for convection cells
+      const r  = 10 + (i % 7) * 5;
+      const brightness = 0.55 + Math.sin(t * 0.4 + i) * 0.25;
       const gg = Math.floor(220 * brightness);
       const bb = Math.floor(60  * brightness);
       const cellG = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      cellG.addColorStop(0,   `rgba(${rr},${gg},${bb},0.55)`);
-      cellG.addColorStop(0.6, `rgba(${rr},${Math.floor(gg*0.6)},0,0.22)`);
+      cellG.addColorStop(0,   `rgba(255,${gg},${bb},0.55)`);
       cellG.addColorStop(1,   'rgba(0,0,0,0)');
       ctx.fillStyle = cellG;
       ctx.fillRect(0, 0, S, S);
     }
 
-    // Dark sunspots — complex umbra+penumbra
-    for (let i = 0; i < 18; i++) {
+    // Sunspots — reduced count
+    for (let i = 0; i < 8; i++) {
       const seed = i * 317.4;
       const sx = (Math.sin(seed * 1.3) * 0.4 + 0.5) * S;
       const sy = (Math.cos(seed * 0.9) * 0.4 + 0.5) * S;
-      const sr = 22 + (i % 4) * 14;
-      // Penumbra
-      const penG = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr * 1.8);
-      penG.addColorStop(0,   'rgba(80,20,0,0.85)');
-      penG.addColorStop(0.5, 'rgba(140,50,0,0.45)');
-      penG.addColorStop(1,   'rgba(0,0,0,0)');
-      ctx.fillStyle = penG;
-      ctx.fillRect(0, 0, S, S);
-      // Umbra
+      const sr = 10 + (i % 4) * 8;
       const umbG = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-      umbG.addColorStop(0,   'rgba(20,5,0,0.92)');
-      umbG.addColorStop(0.7, 'rgba(60,15,0,0.6)');
+      umbG.addColorStop(0,   'rgba(30,8,0,0.88)');
+      umbG.addColorStop(0.6, 'rgba(70,20,0,0.5)');
       umbG.addColorStop(1,   'rgba(0,0,0,0)');
       ctx.fillStyle = umbG;
-      ctx.fillRect(0, 0, S, S);
-    }
-
-    // Solar prominence arcs (bright filaments)
-    for (let i = 0; i < 25; i++) {
-      const seed = i * 89.3 + t * 0.04;
-      const px = (Math.sin(seed) * 0.48 + 0.5) * S;
-      const py = (Math.cos(seed * 1.4) * 0.48 + 0.5) * S;
-      const pr = 8 + (i % 5) * 5;
-      const pAlpha = 0.3 + Math.sin(t * 0.5 + i) * 0.2;
-      const prG = ctx.createRadialGradient(px, py, 0, px, py, pr);
-      prG.addColorStop(0,   `rgba(255,240,100,${pAlpha})`);
-      prG.addColorStop(1,   'rgba(255,180,0,0)');
-      ctx.fillStyle = prG;
       ctx.fillRect(0, 0, S, S);
     }
 
@@ -486,81 +457,32 @@ export class PlanetScene {
   }
 
   private createSunCorona(): void {
-    // Inner corona — tight, bright, hot
-    const inner = new ParticleSystem('sunCoronaInner', 1200, this.scene);
-    inner.emitter = Vector3.Zero();
-    inner.particleEmitterType = new SphereParticleEmitter(5.5);
+    // Single merged corona — efficient, still visually rich
+    const corona = new ParticleSystem('sunCorona', 300, this.scene);
+    corona.emitter = Vector3.Zero();
+    corona.particleEmitterType = new SphereParticleEmitter(4.5);
 
-    const innerTex = new DynamicTexture('coronaInnerTex', 128, this.scene, false);
-    const ic = innerTex.getContext() as CanvasRenderingContext2D;
-    const ig = ic.createRadialGradient(64, 64, 0, 64, 64, 64);
-    ig.addColorStop(0,   'rgba(255,252,200,1)');
-    ig.addColorStop(0.25,'rgba(255,220,100,0.9)');
-    ig.addColorStop(0.6, 'rgba(255,140,40,0.45)');
-    ig.addColorStop(1,   'rgba(255,80,0,0)');
-    ic.fillStyle = ig; ic.fillRect(0, 0, 128, 128);
-    innerTex.update();
+    const coronaTex = new DynamicTexture('coronaTex', 64, this.scene, false);
+    const cc = coronaTex.getContext() as CanvasRenderingContext2D;
+    const cg = cc.createRadialGradient(32, 32, 0, 32, 32, 32);
+    cg.addColorStop(0,   'rgba(255,250,180,1)');
+    cg.addColorStop(0.3, 'rgba(255,200,80,0.7)');
+    cg.addColorStop(0.7, 'rgba(255,130,30,0.3)');
+    cg.addColorStop(1,   'rgba(255,80,0,0)');
+    cc.fillStyle = cg; cc.fillRect(0, 0, 64, 64);
+    coronaTex.update();
 
-    inner.particleTexture = innerTex;
-    inner.minSize = 0.5; inner.maxSize = 1.8;
-    inner.minLifeTime = 1.5; inner.maxLifeTime = 3.5;
-    inner.emitRate = 300;
-    inner.blendMode = ParticleSystem.BLENDMODE_ADD;
-    inner.minEmitPower = 0.3; inner.maxEmitPower = 1.0;
-    inner.updateSpeed = 0.025;
-    inner.color1 = new Color4(1, 0.97, 0.7, 1);
-    inner.color2 = new Color4(1, 0.85, 0.45, 1);
-    inner.colorDead = new Color4(1, 0.5, 0.1, 0);
-    inner.start();
-
-    // Outer corona — large, wispy, solar wind
-    const outer = new ParticleSystem('sunCoronaOuter', 500, this.scene);
-    outer.emitter = Vector3.Zero();
-    outer.particleEmitterType = new SphereParticleEmitter(5.8);
-
-    const outerTex = new DynamicTexture('coronaOuterTex', 64, this.scene, false);
-    const oc = outerTex.getContext() as CanvasRenderingContext2D;
-    const og = oc.createRadialGradient(32, 32, 0, 32, 32, 32);
-    og.addColorStop(0,   'rgba(255,180,60,0.5)');
-    og.addColorStop(0.5, 'rgba(255,120,30,0.2)');
-    og.addColorStop(1,   'rgba(200,60,0,0)');
-    oc.fillStyle = og; oc.fillRect(0, 0, 64, 64);
-    outerTex.update();
-
-    outer.particleTexture = outerTex;
-    outer.minSize = 2.0; outer.maxSize = 6.0;
-    outer.minLifeTime = 4; outer.maxLifeTime = 10;
-    outer.emitRate = 60;
-    outer.blendMode = ParticleSystem.BLENDMODE_ADD;
-    outer.minEmitPower = 1.5; outer.maxEmitPower = 4.0;
-    outer.updateSpeed = 0.015;
-    outer.color1 = new Color4(1, 0.7, 0.2, 0.6);
-    outer.color2 = new Color4(1, 0.5, 0.1, 0.4);
-    outer.colorDead = new Color4(0.8, 0.3, 0, 0);
-    outer.start();
-
-    // Solar wind streaming outward
-    const wind = new ParticleSystem('solarWind', 400, this.scene);
-    wind.emitter = Vector3.Zero();
-    wind.particleEmitterType = new SphereParticleEmitter(5.2);
-
-    const windTex = new DynamicTexture('windTex', 32, this.scene, false);
-    const wc = windTex.getContext() as CanvasRenderingContext2D;
-    wc.fillStyle = 'rgba(255,200,80,0.7)';
-    wc.fillRect(0, 0, 32, 32);
-    windTex.update();
-
-    wind.particleTexture = windTex;
-    wind.minSize = 0.1; wind.maxSize = 0.4;
-    wind.minLifeTime = 8; wind.maxLifeTime = 20;
-    wind.emitRate = 80;
-    wind.blendMode = ParticleSystem.BLENDMODE_ADD;
-    wind.minEmitPower = 6; wind.maxEmitPower = 18;
-    wind.updateSpeed = 0.02;
-    wind.color1 = new Color4(1, 0.9, 0.6, 0.35);
-    wind.color2 = new Color4(0.8, 0.6, 0.3, 0.15);
-    wind.colorDead = new Color4(0.5, 0.3, 0.1, 0);
-    wind.start();
+    corona.particleTexture = coronaTex;
+    corona.minSize = 0.5; corona.maxSize = 2.5;
+    corona.minLifeTime = 2; corona.maxLifeTime = 6;
+    corona.emitRate = 60;
+    corona.blendMode = ParticleSystem.BLENDMODE_ADD;
+    corona.minEmitPower = 0.5; corona.maxEmitPower = 2.5;
+    corona.updateSpeed = 0.02;
+    corona.color1 = new Color4(1, 0.95, 0.65, 0.9);
+    corona.color2 = new Color4(1, 0.75, 0.3, 0.6);
+    corona.colorDead = new Color4(1, 0.5, 0.1, 0);
+    corona.start();
   }
 
   private createSunLensFlares(): void {
@@ -606,55 +528,34 @@ export class PlanetScene {
     try {
       const pipeline = new DefaultRenderingPipeline(
         'cinematicPipeline',
-        true, // HDR
+        false, // no HDR — HDR mode was causing the sun glow to blow out
         this.scene,
         [this.camera],
       );
 
-      // FXAA anti-aliasing
+      // FXAA anti-aliasing — crisp edges, no blurring
       pipeline.fxaaEnabled = true;
       pipeline.samples = 4;
 
-      // HDR bloom — aggressive, cinematic
+      // Subtle bloom — only the brightest emissive areas (the sun) should glow
       pipeline.bloomEnabled = true;
-      pipeline.bloomThreshold = 0.18;
-      pipeline.bloomWeight    = 0.95;
-      pipeline.bloomKernel    = 128;
-      pipeline.bloomScale     = 0.55;
+      pipeline.bloomThreshold = 0.75; // only very bright pixels
+      pipeline.bloomWeight    = 0.25; // gentle, not screen-filling
+      pipeline.bloomKernel    = 64;
+      pipeline.bloomScale     = 0.5;
 
-      // Vignette — classic cinematic edge darkening
+      // Light vignette for cinematic framing — no blur induced
       pipeline.imageProcessingEnabled = true;
-      pipeline.imageProcessing.vignetteEnabled  = true;
-      pipeline.imageProcessing.vignetteWeight   = 4.5;
-      pipeline.imageProcessing.vignetteCameraFov = 0.5;
-      pipeline.imageProcessing.vignetteColor    = new Color4(0, 0, 0, 0);
-      pipeline.imageProcessing.vignetteBlendMode = 1; // Multiply
+      pipeline.imageProcessing.vignetteEnabled   = true;
+      pipeline.imageProcessing.vignetteWeight    = 2.5;
+      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 0);
+      pipeline.imageProcessing.vignetteBlendMode = 1;
+      pipeline.imageProcessing.contrast  = 1.15;
+      pipeline.imageProcessing.exposure  = 1.0;
 
-      // Chromatic aberration — subtle lens distortion
-      pipeline.chromaticAberrationEnabled = true;
-      pipeline.chromaticAberration.aberrationAmount = 12;
-      pipeline.chromaticAberration.radialIntensity   = 1;
-
-      // Contrast & exposure
-      pipeline.imageProcessing.contrast   = 1.45;
-      pipeline.imageProcessing.exposure   = 1.2;
-
-      // Tone mapping
-      pipeline.imageProcessing.toneMappingEnabled = true;
-      pipeline.imageProcessing.toneMappingType    = 1; // ACES filmic
-
-      // Depth of field — subtle, pulls focus to mid-range
-      pipeline.depthOfFieldEnabled = true;
-      pipeline.depthOfField.focalLength = 150;
-      pipeline.depthOfField.fStop       = 1.4;
-      pipeline.depthOfField.focusDistance = 4000;
-      pipeline.depthOfField.lensSize    = 50;
-      pipeline.depthOfFieldBlurLevel = DepthOfFieldEffectBlurLevel.Low;
-
-      // Grain — very subtle film grain
-      pipeline.grainEnabled = true;
-      pipeline.grain.intensity  = 8;
-      pipeline.grain.animated   = true;
+      // NO depth of field — it makes everything blurry
+      // NO chromatic aberration — it makes edges look wrong and blurry
+      // NO grain — adds noise that reads as blur
     } catch (_e) {
       // Post-processing unavailable in this environment
     }
@@ -687,120 +588,36 @@ export class PlanetScene {
   private createStarField(): void {
     const W = 600;
 
-    // ── Layer 1: dense faint background stars ──────────────────────────────
-    const bgStars = new ParticleSystem('bgStars', 12000, this.scene);
-    bgStars.emitter = Vector3.Zero();
-    bgStars.minEmitBox = new Vector3(-W, -W, -W);
-    bgStars.maxEmitBox = new Vector3(W, W, W);
+    // Single efficient star system — 2 size variants using same texture
+    const starTex = new DynamicTexture('starTex', 64, this.scene, false);
+    const stCtx = starTex.getContext() as CanvasRenderingContext2D;
+    const stG = stCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    stG.addColorStop(0,    'rgba(255,255,255,1)');
+    stG.addColorStop(0.2,  'rgba(220,228,255,0.9)');
+    stG.addColorStop(0.5,  'rgba(180,195,255,0.45)');
+    stG.addColorStop(0.85, 'rgba(140,160,255,0.12)');
+    stG.addColorStop(1,    'rgba(0,0,0,0)');
+    stCtx.fillStyle = stG; stCtx.fillRect(0, 0, 64, 64);
+    starTex.update();
 
-    const bgTex = new DynamicTexture('bgStarTex', 32, this.scene, false);
-    const bgCtx = bgTex.getContext() as CanvasRenderingContext2D;
-    const bgG = bgCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    bgG.addColorStop(0,   'rgba(210,220,255,1)');
-    bgG.addColorStop(0.35,'rgba(200,210,255,0.7)');
-    bgG.addColorStop(0.7, 'rgba(180,190,255,0.25)');
-    bgG.addColorStop(1,   'rgba(0,0,0,0)');
-    bgCtx.fillStyle = bgG; bgCtx.fillRect(0, 0, 32, 32);
-    bgTex.update();
+    // Main star field — 2500 particles, permanent, no movement
+    const stars = new ParticleSystem('stars', 2500, this.scene);
+    stars.emitter = Vector3.Zero();
+    stars.minEmitBox = new Vector3(-W, -W, -W);
+    stars.maxEmitBox = new Vector3(W, W, W);
+    stars.particleTexture = starTex;
+    stars.minSize = 0.1; stars.maxSize = 1.2;
+    stars.minLifeTime = 9999; stars.maxLifeTime = 9999;
+    stars.emitRate = 2500;
+    stars.blendMode = ParticleSystem.BLENDMODE_ADD;
+    stars.minEmitPower = 0; stars.maxEmitPower = 0;
+    stars.color1 = new Color4(0.9, 0.92, 1.0, 0.8);
+    stars.color2 = new Color4(1.0, 0.95, 0.82, 0.65);
+    stars.colorDead = new Color4(1, 1, 1, 0);
+    stars.gravity = Vector3.Zero();
+    stars.start();
 
-    bgStars.particleTexture = bgTex;
-    bgStars.minSize = 0.08; bgStars.maxSize = 0.45;
-    bgStars.minLifeTime = 9999; bgStars.maxLifeTime = 9999;
-    bgStars.emitRate = 12000;
-    bgStars.blendMode = ParticleSystem.BLENDMODE_ADD;
-    bgStars.minEmitPower = 0; bgStars.maxEmitPower = 0;
-    bgStars.color1 = new Color4(0.85, 0.88, 1.0, 0.55);
-    bgStars.color2 = new Color4(1.0,  0.95, 0.85, 0.45);
-    bgStars.colorDead = new Color4(1, 1, 1, 0);
-    bgStars.gravity = Vector3.Zero();
-    bgStars.start();
-
-    // ── Layer 2: mid-field bright white/blue stars ─────────────────────────
-    const midStars = new ParticleSystem('midStars', 3000, this.scene);
-    midStars.emitter = Vector3.Zero();
-    midStars.minEmitBox = new Vector3(-W, -W, -W);
-    midStars.maxEmitBox = new Vector3(W, W, W);
-
-    const midTex = new DynamicTexture('midStarTex', 64, this.scene, false);
-    const mCtx = midTex.getContext() as CanvasRenderingContext2D;
-    const mG = mCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    mG.addColorStop(0,    'rgba(255,255,255,1)');
-    mG.addColorStop(0.15, 'rgba(200,220,255,0.95)');
-    mG.addColorStop(0.4,  'rgba(160,185,255,0.55)');
-    mG.addColorStop(0.75, 'rgba(100,130,255,0.18)');
-    mG.addColorStop(1,    'rgba(0,0,0,0)');
-    mCtx.fillStyle = mG; mCtx.fillRect(0, 0, 64, 64);
-    midTex.update();
-
-    midStars.particleTexture = midTex;
-    midStars.minSize = 0.25; midStars.maxSize = 0.85;
-    midStars.minLifeTime = 9999; midStars.maxLifeTime = 9999;
-    midStars.emitRate = 3000;
-    midStars.blendMode = ParticleSystem.BLENDMODE_ADD;
-    midStars.minEmitPower = 0; midStars.maxEmitPower = 0;
-    midStars.color1 = new Color4(1.0, 1.0, 1.0, 0.85);
-    midStars.color2 = new Color4(0.7, 0.82, 1.0, 0.7);
-    midStars.colorDead = new Color4(1, 1, 1, 0);
-    midStars.gravity = Vector3.Zero();
-    midStars.start();
-
-    // ── Layer 3: foreground giant/supergiant stars ─────────────────────────
-    const fgStars = new ParticleSystem('fgStars', 300, this.scene);
-    fgStars.emitter = Vector3.Zero();
-    fgStars.minEmitBox = new Vector3(-W * 0.7, -W * 0.7, -W * 0.7);
-    fgStars.maxEmitBox = new Vector3(W * 0.7, W * 0.7, W * 0.7);
-
-    const fgTex = new DynamicTexture('fgStarTex', 128, this.scene, false);
-    const fCtx = fgTex.getContext() as CanvasRenderingContext2D;
-    const fG = fCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    fG.addColorStop(0,    'rgba(255,255,255,1)');
-    fG.addColorStop(0.1,  'rgba(255,248,200,1)');
-    fG.addColorStop(0.3,  'rgba(255,220,120,0.7)');
-    fG.addColorStop(0.6,  'rgba(255,170,80,0.3)');
-    fG.addColorStop(1,    'rgba(0,0,0,0)');
-    fCtx.fillStyle = fG; fCtx.fillRect(0, 0, 128, 128);
-    // Diffraction spikes
-    fCtx.strokeStyle = 'rgba(255,240,180,0.25)';
-    fCtx.lineWidth = 2;
-    for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) {
-      fCtx.beginPath();
-      fCtx.moveTo(64, 64);
-      fCtx.lineTo(64 + Math.cos(a) * 64, 64 + Math.sin(a) * 64);
-      fCtx.stroke();
-    }
-    fgTex.update();
-
-    fgStars.particleTexture = fgTex;
-    fgStars.minSize = 0.8; fgStars.maxSize = 2.5;
-    fgStars.minLifeTime = 9999; fgStars.maxLifeTime = 9999;
-    fgStars.emitRate = 300;
-    fgStars.blendMode = ParticleSystem.BLENDMODE_ADD;
-    fgStars.minEmitPower = 0; fgStars.maxEmitPower = 0;
-    fgStars.color1 = new Color4(1.0,  0.97, 0.78, 0.9);
-    fgStars.color2 = new Color4(0.85, 0.92, 1.0,  0.85);
-    fgStars.colorDead = new Color4(1, 1, 1, 0);
-    fgStars.gravity = Vector3.Zero();
-    fgStars.start();
-
-    // ── Layer 4: orange/red giant stars ───────────────────────────────────
-    const redStars = new ParticleSystem('redStars', 120, this.scene);
-    redStars.emitter = Vector3.Zero();
-    redStars.minEmitBox = new Vector3(-W, -W, -W);
-    redStars.maxEmitBox = new Vector3(W, W, W);
-    redStars.particleTexture = fgTex;
-    redStars.minSize = 0.6; redStars.maxSize = 1.8;
-    redStars.minLifeTime = 9999; redStars.maxLifeTime = 9999;
-    redStars.emitRate = 120;
-    redStars.blendMode = ParticleSystem.BLENDMODE_ADD;
-    redStars.minEmitPower = 0; redStars.maxEmitPower = 0;
-    redStars.color1 = new Color4(1.0, 0.55, 0.25, 0.75);
-    redStars.color2 = new Color4(1.0, 0.38, 0.12, 0.6);
-    redStars.colorDead = new Color4(1, 0.4, 0, 0);
-    redStars.gravity = Vector3.Zero();
-    redStars.start();
-
-    // Keep reference for dynamic updates (first layer)
-    this.starFieldParticleSystem = bgStars;
+    this.starFieldParticleSystem = stars;
   }
 
   private createMeteorSystem(): void {
@@ -1654,62 +1471,23 @@ export class PlanetScene {
     scale: number,
     radius: number,
   ): void {
-    // Inner atmosphere — tight limb glow
-    const atmoInner = MeshBuilder.CreateSphere(
-      `atmoInner_${planet.name}`,
-      { diameter: radius * 2 * (scale * 0.97), segments: 48 },
+    // Single atmosphere layer — keeps draw calls low and avoids glow-layer bleed
+    const atmo = MeshBuilder.CreateSphere(
+      `atmo_${planet.name}`,
+      { diameter: radius * 2 * scale, segments: 32 },
       this.scene,
     );
-    atmoInner.parent = planet;
-    atmoInner.position = Vector3.Zero();
-    atmoInner.isPickable = false;
+    atmo.parent = planet;
+    atmo.position = Vector3.Zero();
+    atmo.isPickable = false;
 
-    const innerMat = new StandardMaterial(`atmoInnerMat_${planet.name}`, this.scene);
-    innerMat.diffuseColor = new Color3(0, 0, 0);
-    innerMat.emissiveColor = color.scale(0.9);
-    innerMat.alpha = 0.22;
-    innerMat.backFaceCulling = true; // inside only
-    innerMat.zOffset = 1;
-    atmoInner.material = innerMat;
-
-    // Mid atmosphere — broad haze layer
-    const atmoMid = MeshBuilder.CreateSphere(
-      `atmoMid_${planet.name}`,
-      { diameter: radius * 2 * scale, segments: 48 },
-      this.scene,
-    );
-    atmoMid.parent = planet;
-    atmoMid.position = Vector3.Zero();
-    atmoMid.isPickable = false;
-
-    const midMat = new StandardMaterial(`atmoMidMat_${planet.name}`, this.scene);
-    midMat.diffuseColor = new Color3(0, 0, 0);
-    midMat.emissiveColor = color.scale(0.5);
-    midMat.alpha = 0.14;
-    midMat.backFaceCulling = false;
-    atmoMid.material = midMat;
-
-    // Outer atmosphere — wide subtle glow
-    const atmoOuter = MeshBuilder.CreateSphere(
-      `atmoOuter_${planet.name}`,
-      { diameter: radius * 2 * (scale * 1.12), segments: 32 },
-      this.scene,
-    );
-    atmoOuter.parent = planet;
-    atmoOuter.position = Vector3.Zero();
-    atmoOuter.isPickable = false;
-
-    const outerMat = new StandardMaterial(`atmoOuterMat_${planet.name}`, this.scene);
-    outerMat.diffuseColor = new Color3(0, 0, 0);
-    outerMat.emissiveColor = color.scale(0.25);
-    outerMat.alpha = 0.07;
-    outerMat.backFaceCulling = false;
-    atmoOuter.material = outerMat;
-
-    if (this.glowLayer) {
-      this.glowLayer.addIncludedOnlyMesh(atmoMid);
-      this.glowLayer.addIncludedOnlyMesh(atmoOuter);
-    }
+    const atmoMat = new StandardMaterial(`atmoMat_${planet.name}`, this.scene);
+    atmoMat.diffuseColor = new Color3(0, 0, 0);
+    atmoMat.emissiveColor = color.scale(0.55);
+    atmoMat.alpha = 0.18;
+    atmoMat.backFaceCulling = false;
+    atmo.material = atmoMat;
+    // NOT added to glowLayer — screen-space glow doesn't shrink with zoom
   }
 
   private addCloudParticles(planet: Mesh, color: Color3, radius: number): void {
@@ -4152,90 +3930,42 @@ export class PlanetScene {
   }
 
   private createNebula(): void {
-    // Helper to build a soft cloud texture
-    const makeCloudTex = (name: string, size: number): DynamicTexture => {
-      const t = new DynamicTexture(name, size, this.scene, false);
-      const c = t.getContext() as CanvasRenderingContext2D;
-      const h = size / 2;
-      const g = c.createRadialGradient(h, h, 0, h, h, h);
-      g.addColorStop(0,   'rgba(255,255,255,1)');
-      g.addColorStop(0.35,'rgba(255,255,255,0.65)');
-      g.addColorStop(0.65,'rgba(255,255,255,0.28)');
-      g.addColorStop(1,   'rgba(255,255,255,0)');
-      c.fillStyle = g; c.fillRect(0, 0, size, size);
-      t.update();
-      return t;
-    };
+    // Shared cloud texture — one allocation
+    const cloudTex = new DynamicTexture('nebulaCloudTex', 128, this.scene, false);
+    const nc = cloudTex.getContext() as CanvasRenderingContext2D;
+    const ng = nc.createRadialGradient(64, 64, 0, 64, 64, 64);
+    ng.addColorStop(0,   'rgba(255,255,255,1)');
+    ng.addColorStop(0.4, 'rgba(255,255,255,0.55)');
+    ng.addColorStop(0.75,'rgba(255,255,255,0.2)');
+    ng.addColorStop(1,   'rgba(255,255,255,0)');
+    nc.fillStyle = ng; nc.fillRect(0, 0, 128, 128);
+    cloudTex.update();
 
-    const cloudTex = makeCloudTex('nebulaCloudTex', 256);
+    // Two nebula regions — blue/violet and warm red — efficient particle counts
+    const regions = [
+      { name: 'nebulaBlue', pos: new Vector3(-120, 30, -80),  r: 80,
+        c1: new Color4(0.2, 0.38, 1.0, 0.055), c2: new Color4(0.42, 0.22, 0.9, 0.04) },
+      { name: 'nebulaRed',  pos: new Vector3(110, -35, 130), r: 70,
+        c1: new Color4(1.0, 0.14, 0.2, 0.05),  c2: new Color4(0.85, 0.08, 0.3, 0.035) },
+    ];
 
-    // ── Region 1 — Blue-violet emission nebula (Orion-style) ──────────────
-    const blueNeb = new ParticleSystem('nebulaBlue', 600, this.scene);
-    blueNeb.emitter = new Vector3(-120, 30, -80);
-    blueNeb.minEmitBox = new Vector3(-90, -55, -90);
-    blueNeb.maxEmitBox = new Vector3(90, 55, 90);
-    blueNeb.particleTexture = cloudTex;
-    blueNeb.minSize = 18; blueNeb.maxSize = 55;
-    blueNeb.minLifeTime = 60; blueNeb.maxLifeTime = 120;
-    blueNeb.emitRate = 8;
-    blueNeb.blendMode = ParticleSystem.BLENDMODE_ADD;
-    blueNeb.minEmitPower = 0.05; blueNeb.maxEmitPower = 0.18;
-    blueNeb.minAngularSpeed = -0.015; blueNeb.maxAngularSpeed = 0.015;
-    blueNeb.color1    = new Color4(0.18, 0.35, 1.0,  0.065);
-    blueNeb.color2    = new Color4(0.45, 0.22, 0.88, 0.05);
-    blueNeb.colorDead = new Color4(0.1,  0.2,  0.6,  0);
-    blueNeb.start();
-
-    // ── Region 2 — Red hydrogen-alpha nebula (Eagle/Pillars-style) ────────
-    const redNeb = new ParticleSystem('nebulaRed', 500, this.scene);
-    redNeb.emitter = new Vector3(100, -40, 120);
-    redNeb.minEmitBox = new Vector3(-80, -45, -80);
-    redNeb.maxEmitBox = new Vector3(80,  45,  80);
-    redNeb.particleTexture = cloudTex;
-    redNeb.minSize = 22; redNeb.maxSize = 65;
-    redNeb.minLifeTime = 70; redNeb.maxLifeTime = 130;
-    redNeb.emitRate = 7;
-    redNeb.blendMode = ParticleSystem.BLENDMODE_ADD;
-    redNeb.minEmitPower = 0.04; redNeb.maxEmitPower = 0.15;
-    redNeb.minAngularSpeed = -0.01; redNeb.maxAngularSpeed = 0.01;
-    redNeb.color1    = new Color4(1.0,  0.12, 0.18, 0.058);
-    redNeb.color2    = new Color4(0.88, 0.08, 0.28, 0.042);
-    redNeb.colorDead = new Color4(0.6,  0.05, 0.1,  0);
-    redNeb.start();
-
-    // ── Region 3 — Teal/cyan reflection nebula ────────────────────────────
-    const tealNeb = new ParticleSystem('nebulaTeal', 400, this.scene);
-    tealNeb.emitter = new Vector3(0, 100, -150);
-    tealNeb.minEmitBox = new Vector3(-70, -40, -70);
-    tealNeb.maxEmitBox = new Vector3(70,  40,  70);
-    tealNeb.particleTexture = cloudTex;
-    tealNeb.minSize = 15; tealNeb.maxSize = 45;
-    tealNeb.minLifeTime = 50; tealNeb.maxLifeTime = 100;
-    tealNeb.emitRate = 6;
-    tealNeb.blendMode = ParticleSystem.BLENDMODE_ADD;
-    tealNeb.minEmitPower = 0.03; tealNeb.maxEmitPower = 0.12;
-    tealNeb.minAngularSpeed = -0.02; tealNeb.maxAngularSpeed = 0.02;
-    tealNeb.color1    = new Color4(0.1,  0.9,  0.85, 0.045);
-    tealNeb.color2    = new Color4(0.05, 0.6,  0.8,  0.03);
-    tealNeb.colorDead = new Color4(0.05, 0.4,  0.5,  0);
-    tealNeb.start();
-
-    // ── Region 4 — Golden/amber dust cloud ───────────────────────────────
-    const goldNeb = new ParticleSystem('nebulaGold', 300, this.scene);
-    goldNeb.emitter = new Vector3(-80, -90, 100);
-    goldNeb.minEmitBox = new Vector3(-60, -35, -60);
-    goldNeb.maxEmitBox = new Vector3(60,  35,  60);
-    goldNeb.particleTexture = cloudTex;
-    goldNeb.minSize = 12; goldNeb.maxSize = 38;
-    goldNeb.minLifeTime = 40; goldNeb.maxLifeTime = 90;
-    goldNeb.emitRate = 5;
-    goldNeb.blendMode = ParticleSystem.BLENDMODE_ADD;
-    goldNeb.minEmitPower = 0.04; goldNeb.maxEmitPower = 0.1;
-    goldNeb.minAngularSpeed = -0.012; goldNeb.maxAngularSpeed = 0.012;
-    goldNeb.color1    = new Color4(1.0,  0.78, 0.18, 0.05);
-    goldNeb.color2    = new Color4(0.9,  0.55, 0.08, 0.035);
-    goldNeb.colorDead = new Color4(0.6,  0.35, 0.05, 0);
-    goldNeb.start();
+    for (const def of regions) {
+      const neb = new ParticleSystem(def.name, 200, this.scene);
+      neb.emitter = def.pos;
+      neb.minEmitBox = new Vector3(-def.r, -def.r * 0.6, -def.r);
+      neb.maxEmitBox = new Vector3(def.r, def.r * 0.6, def.r);
+      neb.particleTexture = cloudTex;
+      neb.minSize = 20; neb.maxSize = 55;
+      neb.minLifeTime = 60; neb.maxLifeTime = 120;
+      neb.emitRate = 4;
+      neb.blendMode = ParticleSystem.BLENDMODE_ADD;
+      neb.minEmitPower = 0.04; neb.maxEmitPower = 0.15;
+      neb.minAngularSpeed = -0.01; neb.maxAngularSpeed = 0.01;
+      neb.color1    = def.c1;
+      neb.color2    = def.c2;
+      neb.colorDead = new Color4(0, 0, 0, 0);
+      neb.start();
+    }
   }
 
   private toggleMusic(): void {
@@ -5796,6 +5526,12 @@ export class PlanetScene {
     if (this.meteorInterval !== null) {
       clearInterval(this.meteorInterval);
       this.meteorInterval = null;
+    }
+
+    // Clear sun surface animation interval
+    if (this.sunUpdateInterval !== null) {
+      clearInterval(this.sunUpdateInterval);
+      this.sunUpdateInterval = null;
     }
 
     // Clear leaderboard update interval
