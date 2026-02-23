@@ -141,6 +141,7 @@ export class PlanetScene {
   private moonMeshes: Map<string, { mesh: Mesh; angle: number; orbitRadius: number }> = new Map();
   private currentUser: User | null = null;
   private authUnsubscribe: (() => void) | null = null;
+  private planetTooltip: HTMLDivElement | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -183,6 +184,9 @@ export class PlanetScene {
     // Setup keyboard controls and camera presets
     this.setupKeyboardControls();
     this.setupCameraPresetUI();
+
+    // Setup planet hover tooltip
+    this.createPlanetTooltip();
 
     // Setup auth modal
     this.setupAuthModal();
@@ -862,12 +866,14 @@ export class PlanetScene {
       new ExecuteCodeAction(ActionManager.OnPointerOverTrigger, () => {
         this.playSound('hover');
         planet.scaling = new Vector3(1.05, 1.05, 1.05);
+        this.showPlanetTooltip(id);
       }),
     );
 
     planet.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnPointerOutTrigger, () => {
         planet.scaling = new Vector3(1, 1, 1);
+        this.hidePlanetTooltip();
       }),
     );
 
@@ -1710,6 +1716,7 @@ export class PlanetScene {
 
   private onPlanetClick(planet: Mesh, planetId: string): void {
     this.playSound('click');
+    this.hidePlanetTooltip();
 
     // Require authentication
     if (!this.currentUser) {
@@ -2641,6 +2648,7 @@ export class PlanetScene {
     if (this.isCameraTransitioning) return; // Prevent multiple transitions
 
     this.playSound('galaxy-switch');
+    this.hidePlanetTooltip();
     const previousIndex = this.currentGalaxyIndex;
     this.currentGalaxyIndex = index;
 
@@ -3119,6 +3127,83 @@ export class PlanetScene {
     };
 
     window.addEventListener('keydown', this.keyboardHandler);
+  }
+
+  private createPlanetTooltip(): void {
+    const tooltip = document.createElement('div');
+    tooltip.id = 'planetTooltip';
+    tooltip.style.cssText = `
+      position: fixed;
+      display: none;
+      max-width: 240px;
+      background: linear-gradient(135deg, rgba(26,26,46,0.97) 0%, rgba(22,33,62,0.97) 100%);
+      border: 1px solid rgba(138,127,255,0.45);
+      border-radius: 12px;
+      padding: 12px 15px;
+      color: #e0d9ff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 13px;
+      pointer-events: none;
+      z-index: 800;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 18px rgba(106,90,205,0.25);
+      backdrop-filter: blur(8px);
+      transition: opacity 0.15s ease;
+    `;
+    document.body.appendChild(tooltip);
+    this.planetTooltip = tooltip;
+
+    // Follow the mouse cursor
+    window.addEventListener('mousemove', (e) => {
+      if (this.planetTooltip && this.planetTooltip.style.display !== 'none') {
+        const offsetX = 18;
+        const offsetY = 12;
+        const vpW = window.innerWidth;
+        const vpH = window.innerHeight;
+        const tipW = this.planetTooltip.offsetWidth || 240;
+        const tipH = this.planetTooltip.offsetHeight || 80;
+        let x = e.clientX + offsetX;
+        let y = e.clientY + offsetY;
+        if (x + tipW > vpW - 8) x = e.clientX - tipW - offsetX;
+        if (y + tipH > vpH - 8) y = e.clientY - tipH - offsetY;
+        this.planetTooltip.style.left = `${x}px`;
+        this.planetTooltip.style.top = `${y}px`;
+      }
+    });
+  }
+
+  private showPlanetTooltip(planetId: string): void {
+    if (!this.planetTooltip) return;
+    const data = this.planetDataMap.get(planetId);
+    if (!data) return;
+
+    const isClaimed = !!(data.claimedBy || data.userId);
+    const claimedByText = data.claimedBy
+      ? `<div style="margin-top:6px;font-size:11px;color:#9a8fff;">
+           👤 Claimed by <strong style="color:#c4bcff;">${this.escapeHtml(data.claimedBy!)}</strong>
+         </div>`
+      : '';
+    const descText = data.description
+      ? `<div style="margin-top:6px;color:#b8b4e0;font-size:12px;line-height:1.4;">${this.escapeHtml(data.description)}</div>`
+      : '';
+    const statusBadge = isClaimed
+      ? `<span style="background:rgba(138,127,255,0.25);border:1px solid rgba(138,127,255,0.5);border-radius:8px;padding:1px 7px;font-size:10px;color:#c4bcff;margin-left:6px;">claimed</span>`
+      : `<span style="background:rgba(80,200,120,0.18);border:1px solid rgba(80,200,120,0.4);border-radius:8px;padding:1px 7px;font-size:10px;color:#7eeea0;margin-left:6px;">unclaimed</span>`;
+
+    this.planetTooltip.innerHTML = `
+      <div style="display:flex;align-items:center;gap:4px;font-weight:700;font-size:14px;color:#fff;">
+        🪐 ${this.escapeHtml(data.name)}${statusBadge}
+      </div>
+      ${descText}
+      ${claimedByText}
+      <div style="margin-top:8px;font-size:10px;color:rgba(138,127,255,0.6);font-style:italic;">Click to ${isClaimed ? 'edit' : 'claim'} this planet</div>
+    `;
+    this.planetTooltip.style.display = 'block';
+  }
+
+  private hidePlanetTooltip(): void {
+    if (this.planetTooltip) {
+      this.planetTooltip.style.display = 'none';
+    }
   }
 
   private setupCameraPresetUI(): void {
@@ -5410,6 +5495,12 @@ export class PlanetScene {
     if (this.cameraPresetUI && this.cameraPresetUI.parentNode) {
       this.cameraPresetUI.parentNode.removeChild(this.cameraPresetUI);
       this.cameraPresetUI = null;
+    }
+
+    // Remove planet tooltip
+    if (this.planetTooltip && this.planetTooltip.parentNode) {
+      this.planetTooltip.parentNode.removeChild(this.planetTooltip);
+      this.planetTooltip = null;
     }
 
     // Unsubscribe from all Firebase subscriptions
