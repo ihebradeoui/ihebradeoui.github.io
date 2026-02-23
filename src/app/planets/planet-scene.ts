@@ -27,6 +27,7 @@ import {
   PBRSubSurfaceConfiguration,
 } from '@babylonjs/core';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
+import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
 import { Subscription } from 'rxjs';
 import { take } from 'rxjs/operators';
 
@@ -54,6 +55,8 @@ export interface PlanetData {
   lastUpdated?: number; // Timestamp when the name was last updated
   claimedBy?: string; // Display name shown in the leaderboard (same as planet name)
   customizations?: string[]; // Active cosmetic customization IDs
+  userId?: string;
+  userEmail?: string;
 }
 
 export interface GalaxyData {
@@ -136,10 +139,13 @@ export class PlanetScene {
   private planetCustomizationParticles: Map<string, ParticleSystem[]> = new Map();
   private planetCustomizationCallbacks: Map<string, Array<() => void>> = new Map();
   private moonMeshes: Map<string, { mesh: Mesh; angle: number; orbitRadius: number }> = new Map();
+  private currentUser: User | null = null;
+  private authUnsubscribe: (() => void) | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
     private database: AngularFireDatabase,
+    private auth: Auth,
   ) {
     this.engine = new Engine(this.canvas, true, {
       preserveDrawingBuffer: true,
@@ -177,6 +183,14 @@ export class PlanetScene {
     // Setup keyboard controls and camera presets
     this.setupKeyboardControls();
     this.setupCameraPresetUI();
+
+    // Setup auth modal
+    this.setupAuthModal();
+    // Listen to auth state
+    this.authUnsubscribe = onAuthStateChanged(this.auth, (user) => {
+      this.currentUser = user;
+      this.updateAuthStatusUI();
+    });
   }
 
   private createScene(): Scene {
@@ -1696,6 +1710,18 @@ export class PlanetScene {
 
   private onPlanetClick(planet: Mesh, planetId: string): void {
     this.playSound('click');
+
+    // Require authentication
+    if (!this.currentUser) {
+      const authModal = document.getElementById('authModal');
+      const planetModal = document.getElementById('planetModal');
+      if (authModal) {
+        authModal.style.display = 'block';
+        if (planetModal) (planetModal as any).dataset.pendingPlanetId = planetId;
+      }
+      return;
+    }
+
     this.selectedPlanet = planet;
     const modal = document.getElementById('planetModal');
     const nameInput = document.getElementById('planetName') as HTMLInputElement;
@@ -1710,7 +1736,7 @@ export class PlanetScene {
         nameInput.value = storedData.name || '';
         descInput.value = storedData.description || '';
         // Populate customization checkboxes
-        ['cosmic_rings', 'star_aura', 'moon_companion', 'crystal_shield', 'nebula_cloud', 'comet_streaks', 'sparkle_orbit', 'aurora_glow'].forEach(cid => {
+        this.getAllCustomizationIds().forEach(cid => {
           const cb = document.getElementById(`custom_${cid}`) as HTMLInputElement;
           if (cb) cb.checked = (storedData.customizations || []).includes(cid);
         });
@@ -1727,6 +1753,9 @@ export class PlanetScene {
             sub.unsubscribe();
           });
       }
+
+      // Show streak info
+      this.updateStreakDisplay(planetId);
 
       this.playSound('modal-open');
       modal.style.display = 'block';
@@ -2043,8 +2072,7 @@ export class PlanetScene {
         const finalClaimedAt = isNameChange || !previousClaimedAt ? now : previousClaimedAt;
 
         // Collect selected customizations
-        const allCustomizationIds = ['cosmic_rings', 'star_aura', 'moon_companion', 'crystal_shield', 'nebula_cloud', 'comet_streaks', 'sparkle_orbit', 'aurora_glow'];
-        const customizations = allCustomizationIds.filter(cid => {
+        const customizations = this.getAllCustomizationIds().filter(cid => {
           const checkbox = document.getElementById(`custom_${cid}`) as HTMLInputElement;
           return checkbox?.checked ?? false;
         });
@@ -2069,6 +2097,8 @@ export class PlanetScene {
           lastUpdated: now,
           claimedBy: nameInput.value, // Use the planet name as the claimer identifier
           customizations,
+          userId: this.currentUser?.uid,
+          userEmail: this.currentUser?.email || undefined,
         };
 
         // Save to Firebase
@@ -3861,6 +3891,111 @@ export class PlanetScene {
         case 'comet_streaks':   this.addCometStreaks(planet, radius, planetId);   break;
         case 'sparkle_orbit':   this.addSparkleOrbit(planet, radius, planetId);  break;
         case 'aurora_glow':     this.addAuroraGlow(planet, radius, planetId);    break;
+        // Particle Effects
+        case 'fairy_dust':           this.addFairyDust(planet, radius, planetId);           break;
+        case 'sakura_petals':        this.addSakuraPetals(planet, radius, planetId);        break;
+        case 'snow_globe':           this.addSnowGlobe(planet, radius, planetId);           break;
+        case 'firefly_dance':        this.addFireflyDance(planet, radius, planetId);        break;
+        case 'spirit_orbs':          this.addSpiritOrbs(planet, radius, planetId);          break;
+        case 'ember_sparks':         this.addEmberSparks(planet, radius, planetId);         break;
+        case 'poison_cloud':         this.addPoisonCloud(planet, radius, planetId);         break;
+        case 'stardust_rain':        this.addStardustRain(planet, radius, planetId);        break;
+        case 'candy_confetti':       this.addCandyConfetti(planet, radius, planetId);       break;
+        case 'butterfly_shower':     this.addButterflyShower(planet, radius, planetId);     break;
+        case 'ghost_wisps':          this.addGhostWisps(planet, radius, planetId);          break;
+        case 'crystal_shards':       this.addCrystalShards(planet, radius, planetId);       break;
+        case 'love_hearts':          this.addLoveHearts(planet, radius, planetId);          break;
+        case 'sand_vortex':          this.addSandVortex(planet, radius, planetId);          break;
+        case 'cosmic_web':           this.addCosmicWeb(planet, radius, planetId);           break;
+        case 'music_particles':      this.addMusicParticles(planet, radius, planetId);      break;
+        case 'quantum_foam':         this.addQuantumFoam(planet, radius, planetId);         break;
+        case 'rainbow_mist':         this.addRainbowMist(planet, radius, planetId);         break;
+        case 'void_particles':       this.addVoidParticles(planet, radius, planetId);       break;
+        case 'ancient_dust':         this.addAncientDust(planet, radius, planetId);         break;
+        case 'water_droplets':       this.addWaterDroplets(planet, radius, planetId);       break;
+        case 'neon_rain':            this.addNeonRain(planet, radius, planetId);            break;
+        case 'phoenix_sparks':       this.addPhoenixSparks(planet, radius, planetId);       break;
+        case 'icy_flakes':           this.addIcyFlakes(planet, radius, planetId);           break;
+        case 'solar_wind':           this.addSolarWind(planet, radius, planetId);           break;
+        case 'toxic_bubbles':        this.addToxicBubbles(planet, radius, planetId);        break;
+        case 'dream_wisps':          this.addDreamWisps(planet, radius, planetId);          break;
+        case 'golden_sparkles':      this.addGoldenSparkles(planet, radius, planetId);      break;
+        case 'galaxy_motes':         this.addGalaxyMotes(planet, radius, planetId);         break;
+        case 'plasma_sparks':        this.addPlasmaSparks(planet, radius, planetId);        break;
+        // Glow/Shell Effects
+        case 'dark_matter_shell':    this.addDarkMatterShell(planet, radius, planetId);     break;
+        case 'plasma_mantle':        this.addPlasmaMantle(planet, radius, planetId);        break;
+        case 'jade_aura':            this.addJadeAura(planet, radius, planetId);            break;
+        case 'golden_divine':        this.addGoldenDivine(planet, radius, planetId);        break;
+        case 'void_aura':            this.addVoidAura(planet, radius, planetId);            break;
+        case 'lunar_glow':           this.addLunarGlow(planet, radius, planetId);           break;
+        case 'flame_shell':          this.addFlameShell(planet, radius, planetId);          break;
+        case 'ice_shell':            this.addIceShell(planet, radius, planetId);            break;
+        case 'thunder_mantle':       this.addThunderMantle(planet, radius, planetId);       break;
+        case 'prismatic_shell':      this.addPrismaticShell(planet, radius, planetId);      break;
+        case 'spectral_veil':        this.addSpectralVeil(planet, radius, planetId);        break;
+        case 'solar_corona':         this.addSolarCorona(planet, radius, planetId);         break;
+        case 'nature_bloom':         this.addNatureBloom(planet, radius, planetId);         break;
+        case 'holographic_field':    this.addHolographicField(planet, radius, planetId);    break;
+        case 'shadow_cloak':         this.addShadowCloak(planet, radius, planetId);         break;
+        case 'rose_quartz_glow':     this.addRoseQuartzGlow(planet, radius, planetId);      break;
+        case 'sapphire_aura':        this.addSapphireAura(planet, radius, planetId);        break;
+        case 'emerald_pulse':        this.addEmeraldPulse(planet, radius, planetId);        break;
+        case 'ruby_glow':            this.addRubyGlow(planet, radius, planetId);            break;
+        case 'obsidian_shell':       this.addObsidianShell(planet, radius, planetId);       break;
+        case 'amethyst_haze':        this.addAmethystHaze(planet, radius, planetId);        break;
+        case 'topaz_shimmer':        this.addTopazShimmer(planet, radius, planetId);        break;
+        case 'opal_glow':            this.addOpalGlow(planet, radius, planetId);            break;
+        case 'divine_light_aura':    this.addDivineLightAura(planet, radius, planetId);     break;
+        case 'abyssal_dark':         this.addAbyssalDark(planet, radius, planetId);         break;
+        // Ring/Torus Effects
+        case 'rainbow_rings':        this.addRainbowRings(planet, radius, planetId);        break;
+        case 'neon_rings':           this.addNeonRings(planet, radius, planetId);           break;
+        case 'pearl_rings':          this.addPearlRings(planet, radius, planetId);          break;
+        case 'fire_ring':            this.addFireRing(planet, radius, planetId);            break;
+        case 'ice_ring':             this.addIceRing(planet, radius, planetId);             break;
+        case 'void_ring':            this.addVoidRing(planet, radius, planetId);            break;
+        case 'golden_halo_ring':     this.addGoldenHaloRing(planet, radius, planetId);      break;
+        case 'radiant_halo_rings':   this.addRadiantHaloRings(planet, radius, planetId);    break;
+        case 'eclipse_ring':         this.addEclipseRing(planet, radius, planetId);         break;
+        case 'atomic_rings':         this.addAtomicRings(planet, radius, planetId);         break;
+        case 'double_helix_ring':    this.addDoubleHelixRing(planet, radius, planetId);     break;
+        case 'spiral_rings':         this.addSpiralRings(planet, radius, planetId);         break;
+        case 'electric_hoop':        this.addElectricHoop(planet, radius, planetId);        break;
+        case 'cosmic_crown_rings':   this.addCosmicCrownRings(planet, radius, planetId);    break;
+        case 'sakura_ring':          this.addSakuraRing(planet, radius, planetId);          break;
+        // Orbiting Objects
+        case 'triple_moons':         this.addTripleMoons(planet, radius, planetId);         break;
+        case 'asteroid_belt_orbit':  this.addAsteroidBeltOrbit(planet, radius, planetId);   break;
+        case 'gem_orbit':            this.addGemOrbit(planet, radius, planetId);            break;
+        case 'crystal_orbit':        this.addCrystalOrbit(planet, radius, planetId);        break;
+        case 'fairy_lights_orbit':   this.addFairyLightsOrbit(planet, radius, planetId);    break;
+        case 'satellite_swarm':      this.addSatelliteSwarm(planet, radius, planetId);      break;
+        case 'lotus_orbit':          this.addLotusOrbit(planet, radius, planetId);          break;
+        case 'clockwork_orbit':      this.addClockworkOrbit(planet, radius, planetId);      break;
+        case 'soul_lanterns_orbit':  this.addSoulLanternsOrbit(planet, radius, planetId);   break;
+        case 'star_companions':      this.addStarCompanions(planet, radius, planetId);      break;
+        case 'diamond_orbit':        this.addDiamondOrbit(planet, radius, planetId);        break;
+        case 'ancient_orbs':         this.addAncientOrbs(planet, radius, planetId);         break;
+        case 'binary_moons':         this.addBinaryMoons(planet, radius, planetId);         break;
+        case 'prism_towers_orbit':   this.addPrismTowersOrbit(planet, radius, planetId);    break;
+        case 'flower_companions':    this.addFlowerCompanions(planet, radius, planetId);    break;
+        case 'sacred_geometry_orbit':this.addSacredGeometryOrbit(planet, radius, planetId); break;
+        case 'ice_pillar_orbit':     this.addIcePillarOrbit(planet, radius, planetId);      break;
+        case 'thunder_orbs_orbit':   this.addThunderOrbsOrbit(planet, radius, planetId);    break;
+        case 'mini_planets_orbit':   this.addMiniPlanetsOrbit(planet, radius, planetId);    break;
+        case 'comet_companions':     this.addCometCompanions(planet, radius, planetId);     break;
+        // Complex/Special Effects
+        case 'supernova_pulse':      this.addSupernovaPulse(planet, radius, planetId);      break;
+        case 'vortex_storm':         this.addVortexStorm(planet, radius, planetId);         break;
+        case 'aurora_pillars':       this.addAuroraPillars(planet, radius, planetId);       break;
+        case 'galaxy_swirl_effect':  this.addGalaxySwirl(planet, radius, planetId);         break;
+        case 'time_ripple':          this.addTimeRipple(planet, radius, planetId);          break;
+        case 'eclipse_shadow':       this.addEclipseShadow(planet, radius, planetId);       break;
+        case 'northern_lights_effect':this.addNorthernLightsEffect(planet, radius, planetId);break;
+        case 'cosmic_bloom_effect':  this.addCosmicBloomEffect(planet, radius, planetId);   break;
+        case 'dimensional_rift':     this.addDimensionalRift(planet, radius, planetId);     break;
+        case 'heartbeat_pulse':      this.addHeartbeatPulse(planet, radius, planetId);      break;
       }
     });
   }
@@ -4032,6 +4167,7 @@ export class PlanetScene {
     const sys = new ParticleSystem(`custom_nebula_${planetId}`, 200, this.scene);
     sys.emitter = planet;
     sys.particleEmitterType = new SphereParticleEmitter(radius * 1.5);
+    sys.particleTexture = this.makeDefaultParticleTexture(`custom_nebula_${planetId}`);
     sys.minSize = 0.5; sys.maxSize = 1.5;
     sys.minLifeTime = 4; sys.maxLifeTime = 8;
     sys.emitRate = 25;
@@ -4051,6 +4187,7 @@ export class PlanetScene {
     const sys = new ParticleSystem(`custom_comets_${planetId}`, 150, this.scene);
     sys.emitter = planet;
     sys.particleEmitterType = new SphereParticleEmitter(radius * 2.2);
+    sys.particleTexture = this.makeDefaultParticleTexture(`custom_comets_${planetId}`);
     sys.minSize = 0.08; sys.maxSize = 0.2;
     sys.minLifeTime = 0.6; sys.maxLifeTime = 1.8;
     sys.emitRate = 40;
@@ -4095,7 +4232,7 @@ export class PlanetScene {
     sys.minLifeTime = 1.5; sys.maxLifeTime = 3;
     sys.emitRate = 70;
     sys.blendMode = ParticleSystem.BLENDMODE_ADD;
-    sys.minEmitPower = 0; sys.maxEmitPower = 0.05;
+    sys.minEmitPower = 0.05; sys.maxEmitPower = 0.25;
     sys.minAngularSpeed = -1; sys.maxAngularSpeed = 1;
     sys.color1 = new Color4(1, 1, 0.9, 1);
     sys.color2 = new Color4(0.9, 0.95, 1, 0.8);
@@ -4155,6 +4292,1047 @@ export class PlanetScene {
           Math.max(0, ref.baseColor.b + shift * 0.15),
         );
       });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+
+
+  // ── Auth Methods ────────────────────────────────────────────────────────────
+  private setupAuthModal(): void {
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const authModalClose = document.getElementById('authModalClose');
+    const authSignOutBtn = document.getElementById('authSignOutBtn');
+    const authSignInBtn = document.getElementById('authSignInBtn');
+    const loginTab = document.getElementById('loginTab');
+    const registerTab = document.getElementById('registerTab');
+
+    // Tab switching (replaces inline onclick handlers)
+    if (loginTab && registerTab && loginForm && registerForm) {
+      loginTab.addEventListener('click', () => {
+        (loginForm as HTMLElement).style.display = 'block';
+        (registerForm as HTMLElement).style.display = 'none';
+        loginTab.classList.add('active');
+        registerTab.classList.remove('active');
+      });
+      registerTab.addEventListener('click', () => {
+        (registerForm as HTMLElement).style.display = 'block';
+        (loginForm as HTMLElement).style.display = 'none';
+        registerTab.classList.add('active');
+        loginTab.classList.remove('active');
+      });
+    }
+
+    if (authModalClose) {
+      authModalClose.addEventListener('click', () => {
+        const authModal = document.getElementById('authModal');
+        if (authModal) authModal.style.display = 'none';
+      });
+    }
+    window.addEventListener('click', (event) => {
+      const authModal = document.getElementById('authModal');
+      if (event.target === authModal && authModal) authModal.style.display = 'none';
+    });
+
+    if (loginForm) {
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = (document.getElementById('loginEmail') as HTMLInputElement)?.value;
+        const password = (document.getElementById('loginPassword') as HTMLInputElement)?.value;
+        const errorEl = document.getElementById('loginError');
+        if (errorEl) errorEl.style.display = 'none';
+        try {
+          await signInWithEmailAndPassword(this.auth, email, password);
+          const authModal = document.getElementById('authModal');
+          if (authModal) authModal.style.display = 'none';
+          const planetModal = document.getElementById('planetModal');
+          if (planetModal && (planetModal as any).dataset.pendingPlanetId) {
+            const pendingId = (planetModal as any).dataset.pendingPlanetId;
+            delete (planetModal as any).dataset.pendingPlanetId;
+            const planet = this.planets.get(pendingId);
+            if (planet) this.onPlanetClick(planet, pendingId);
+          }
+        } catch (err: any) {
+          if (errorEl) { errorEl.textContent = err.message || 'Login failed'; errorEl.style.display = 'block'; }
+        }
+      });
+    }
+
+    if (registerForm) {
+      registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = (document.getElementById('registerEmail') as HTMLInputElement)?.value;
+        const password = (document.getElementById('registerPassword') as HTMLInputElement)?.value;
+        const errorEl = document.getElementById('registerError');
+        if (errorEl) errorEl.style.display = 'none';
+        try {
+          await createUserWithEmailAndPassword(this.auth, email, password);
+          const authModal = document.getElementById('authModal');
+          if (authModal) authModal.style.display = 'none';
+          const planetModal = document.getElementById('planetModal');
+          if (planetModal && (planetModal as any).dataset.pendingPlanetId) {
+            const pendingId = (planetModal as any).dataset.pendingPlanetId;
+            delete (planetModal as any).dataset.pendingPlanetId;
+            const planet = this.planets.get(pendingId);
+            if (planet) this.onPlanetClick(planet, pendingId);
+          }
+        } catch (err: any) {
+          if (errorEl) { errorEl.textContent = err.message || 'Registration failed'; errorEl.style.display = 'block'; }
+        }
+      });
+    }
+
+    if (authSignOutBtn) {
+      authSignOutBtn.addEventListener('click', async () => { await signOut(this.auth); });
+    }
+    if (authSignInBtn) {
+      authSignInBtn.addEventListener('click', () => {
+        const authModal = document.getElementById('authModal');
+        if (authModal) authModal.style.display = 'block';
+      });
+    }
+  }
+
+  private readonly BASE_CUSTOMIZATION_SLOTS = 2;
+  private readonly STREAK_DIVISOR = 3;
+  private readonly MAX_CUSTOMIZATION_SLOTS = 108;
+
+  private updateAuthStatusUI(): void {
+    const userDisplay = document.getElementById('authUserDisplay');
+    const signOutBtn = document.getElementById('authSignOutBtn');
+    const signInBtn = document.getElementById('authSignInBtn');
+    if (this.currentUser) {
+      const email = this.currentUser.email || '';
+      const atIndex = email.indexOf('@');
+      const displayEmail = atIndex > 0 ? email.substring(0, Math.min(3, atIndex)) + '***@' + email.substring(atIndex + 1) : email;
+      if (userDisplay) userDisplay.textContent = '\uD83D\uDC64 ' + displayEmail;
+      if (signOutBtn) signOutBtn.style.display = 'inline-block';
+      if (signInBtn) signInBtn.style.display = 'none';
+    } else {
+      if (userDisplay) userDisplay.textContent = '\uD83D\uDC64 Not logged in';
+      if (signOutBtn) signOutBtn.style.display = 'none';
+      if (signInBtn) signInBtn.style.display = 'inline-block';
+    }
+  }
+
+  private updateStreakDisplay(planetId: string): void {
+    const streakDisplay = document.getElementById('streakDisplay');
+    const streakDaysEl = document.getElementById('streakDays');
+    const customSlotsEl = document.getElementById('customSlots');
+    let maxStreak = 0;
+    const now = Date.now();
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+    this.planetDataMap.forEach((data) => {
+      if (data.userId && this.currentUser && data.userId === this.currentUser.uid && data.claimedAt) {
+        const ownershipDays = Math.max(0, Math.floor((now - data.claimedAt) / MS_PER_DAY));
+        if (ownershipDays > maxStreak) maxStreak = ownershipDays;
+      }
+    });
+    const slots = Math.min(this.BASE_CUSTOMIZATION_SLOTS + Math.floor(maxStreak / this.STREAK_DIVISOR), this.MAX_CUSTOMIZATION_SLOTS);
+    if (streakDisplay) streakDisplay.style.display = 'flex';
+    if (streakDaysEl) streakDaysEl.textContent = String(maxStreak);
+    if (customSlotsEl) customSlotsEl.textContent = String(slots);
+    this.enforceCustomizationSlots(slots);
+  }
+
+  private slotChangeHandler: (() => void) | null = null;
+
+  private enforceCustomizationSlots(maxSlots: number): void {
+    const allIds = this.getAllCustomizationIds();
+    let checkedCount = 0;
+    const checkboxes: HTMLInputElement[] = [];
+    allIds.forEach(cid => {
+      const cb = document.getElementById('custom_' + cid) as HTMLInputElement;
+      checkboxes.push(cb);
+      if (cb?.checked) checkedCount++;
+    });
+
+    const updateDisabledState = () => {
+      let checked = 0;
+      checkboxes.forEach(c => { if (c?.checked) checked++; });
+      checkboxes.forEach(c => { if (c && !c.checked) c.disabled = checked >= maxSlots; });
+    };
+
+    checkboxes.forEach((cb, i) => {
+      if (!cb) return;
+      cb.disabled = !cb.checked && checkedCount >= maxSlots;
+      if (this.slotChangeHandler) {
+        cb.removeEventListener('change', this.slotChangeHandler);
+      }
+    });
+
+    this.slotChangeHandler = updateDisabledState;
+    checkboxes.forEach(cb => {
+      if (cb) cb.addEventListener('change', this.slotChangeHandler!);
+    });
+  }
+
+  private getAllCustomizationIds(): string[] {
+    return [
+      'cosmic_rings', 'star_aura', 'moon_companion', 'crystal_shield',
+      'nebula_cloud', 'comet_streaks', 'sparkle_orbit', 'aurora_glow',
+      'stardust_rain', 'phoenix_sparks', 'solar_wind', 'plasma_sparks',
+      'dark_matter_shell', 'flame_shell', 'ice_shell', 'golden_divine',
+      'rainbow_rings', 'atomic_rings', 'supernova_pulse', 'gem_orbit',
+    ];
+  }
+
+  // ── Shared Helpers ──────────────────────────────────────────────────────────
+  private makeGlowShell(id: string, planet: Mesh, radius: number, planetId: string,
+    r: number, g: number, b: number, scale: number, alpha: number, pulseAmp: number, pulseSpeed: number): void {
+    const sphere = MeshBuilder.CreateSphere('custom_' + id + '_' + planetId, { diameter: radius * 2 * scale, segments: 16 }, this.scene);
+    sphere.parent = planet;
+    sphere.position = Vector3.Zero();
+    sphere.isPickable = false;
+    const mat = new StandardMaterial('custom_' + id + 'Mat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(r, g, b);
+    mat.alpha = alpha;
+    mat.backFaceCulling = false;
+    sphere.material = mat;
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(sphere);
+    let t = 0;
+    const cb = () => { if (sphere.isDisposed()) return; t += pulseSpeed; sphere.scaling.setAll(1 + Math.sin(t) * pulseAmp); };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+
+  private makeDefaultParticleTexture(id: string): DynamicTexture {
+    const tex = new DynamicTexture('ptex_' + id, 32, this.scene, false);
+    const ctx = tex.getContext();
+    const grd = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.4, 'rgba(255,255,255,0.8)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, 32, 32);
+    tex.update();
+    return tex;
+  }
+
+  private makeParticleEffect(id: string, planet: Mesh, radius: number, planetId: string,
+    capacity: number, emitRadius: number, minSize: number, maxSize: number, emitRate: number,
+    minLife: number, maxLife: number, c1: Color4, c2: Color4, cDead: Color4, power: number = 0.1): void {
+    const sys = new ParticleSystem('custom_' + id + '_' + planetId, capacity, this.scene);
+    sys.emitter = planet;
+    sys.particleEmitterType = new SphereParticleEmitter(emitRadius);
+    sys.particleTexture = this.makeDefaultParticleTexture('custom_' + id + '_' + planetId);
+    sys.minSize = minSize;
+    sys.maxSize = maxSize;
+    sys.minLifeTime = minLife;
+    sys.maxLifeTime = maxLife;
+    sys.emitRate = emitRate;
+    sys.blendMode = ParticleSystem.BLENDMODE_ADD;
+    sys.minEmitPower = 0.01;
+    sys.maxEmitPower = power;
+    sys.color1 = c1;
+    sys.color2 = c2;
+    sys.colorDead = cDead;
+    sys.gravity = new Vector3(0, 0, 0);
+    sys.start();
+    this.trackCustomizationParticle(planetId, sys);
+  }
+
+  private makeRings(id: string, planet: Mesh, radius: number, planetId: string,
+    configs: Array<{color: Color3; diameterMult: number; thickness: number; alpha: number;
+      rotX: number; rotZ: number; spinX: number; spinY: number; spinZ: number}>): void {
+    const ringRefs: {mesh: Mesh; sx: number; sy: number; sz: number}[] = [];
+    configs.forEach((cfg, i) => {
+      const ring = MeshBuilder.CreateTorus('custom_' + id + 'Ring' + i + '_' + planetId,
+        { diameter: radius * 2 * cfg.diameterMult, thickness: cfg.thickness, tessellation: 64 }, this.scene);
+      ring.parent = planet;
+      ring.position = Vector3.Zero();
+      ring.rotation.x = cfg.rotX;
+      ring.rotation.z = cfg.rotZ;
+      ring.isPickable = false;
+      const mat = new StandardMaterial('custom_' + id + 'Mat' + i + '_' + planetId, this.scene);
+      mat.emissiveColor = cfg.color;
+      mat.alpha = cfg.alpha;
+      mat.backFaceCulling = false;
+      ring.material = mat;
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(ring);
+      ringRefs.push({mesh: ring, sx: cfg.spinX, sy: cfg.spinY, sz: cfg.spinZ});
+    });
+    const cb = () => { ringRefs.forEach(r => { if (!r.mesh.isDisposed()) { r.mesh.rotation.x += r.sx; r.mesh.rotation.y += r.sy; r.mesh.rotation.z += r.sz; } }); };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+
+  private makeOrbitingObjects(id: string, planet: Mesh, radius: number, planetId: string,
+    count: number, shape: 'sphere' | 'box' | 'cylinder', size: number, orbitR: number,
+    color: Color3, emissive: Color3, speed: number, tilt: number, useGlow: boolean = true): void {
+    const objects: {mesh: Mesh; angle: number; speed: number; orbitR: number; tilt: number}[] = [];
+    for (let i = 0; i < count; i++) {
+      let mesh: Mesh;
+      const name = 'custom_' + id + i + '_' + planetId;
+      if (shape === 'sphere') mesh = MeshBuilder.CreateSphere(name, {diameter: size}, this.scene);
+      else if (shape === 'box') mesh = MeshBuilder.CreateBox(name, {size: size}, this.scene);
+      else mesh = MeshBuilder.CreateCylinder(name, {height: size * 2, diameter: size * 0.5}, this.scene);
+      mesh.parent = planet;
+      const mat = new PBRMaterial('custom_' + id + 'Mat' + i + '_' + planetId, this.scene);
+      mat.albedoColor = color;
+      mat.emissiveColor = emissive;
+      mat.metallic = 0.3;
+      mat.roughness = 0.5;
+      mesh.material = mat;
+      mesh.isPickable = false;
+      if (useGlow && this.glowLayer) this.glowLayer.addIncludedOnlyMesh(mesh);
+      const initAngle = (i / count) * Math.PI * 2;
+      objects.push({mesh, angle: initAngle, speed: speed * (0.8 + Math.random() * 0.4), orbitR, tilt});
+    }
+    const cb = () => {
+      objects.forEach(o => {
+        if (o.mesh.isDisposed()) return;
+        o.angle += o.speed;
+        o.mesh.position.x = Math.cos(o.angle) * o.orbitR;
+        o.mesh.position.z = Math.sin(o.angle) * o.orbitR;
+        o.mesh.position.y = Math.sin(o.angle * 0.7) * o.orbitR * o.tilt;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+
+  // ── Particle Effects (30) ──────────────────────────────────────────────────
+  private addFairyDust(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('fairy_dust', planet, radius, planetId, 300, radius * 1.5, 0.05, 0.2, 80, 1, 4,
+      new Color4(1, 0.9, 0.3, 1), new Color4(1, 0.5, 0.8, 1), new Color4(0, 0, 0, 0));
+  }
+  private addSakuraPetals(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('sakura_petals', planet, radius, planetId, 150, radius * 1.8, 0.15, 0.4, 30, 3, 8,
+      new Color4(1, 0.7, 0.8, 1), new Color4(1, 0.5, 0.65, 0.8), new Color4(0, 0, 0, 0));
+  }
+  private addSnowGlobe(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('snow_globe', planet, radius, planetId, 200, radius * 1.6, 0.05, 0.15, 60, 2, 6,
+      new Color4(0.9, 0.95, 1, 1), new Color4(0.7, 0.85, 1, 0.9), new Color4(0, 0, 0, 0));
+  }
+  private addFireflyDance(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('firefly_dance', planet, radius, planetId, 80, radius * 2, 0.1, 0.25, 25, 3, 8,
+      new Color4(0.8, 1, 0.2, 1), new Color4(0.4, 1, 0.1, 0.9), new Color4(0, 0, 0, 0));
+  }
+  private addSpiritOrbs(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('spirit_orbs', planet, radius, planetId, 40, radius * 2, 0.2, 0.5, 15, 5, 10,
+      new Color4(0.8, 0.9, 1, 0.9), new Color4(0.5, 0.7, 1, 0.7), new Color4(0, 0, 0, 0));
+  }
+  private addEmberSparks(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('ember_sparks', planet, radius, planetId, 300, radius * 1.2, 0.05, 0.15, 80, 0.5, 2,
+      new Color4(1, 0.5, 0.1, 1), new Color4(1, 0.2, 0.05, 1), new Color4(0, 0, 0, 0), 2.0);
+  }
+  private addPoisonCloud(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('poison_cloud', planet, radius, planetId, 80, radius * 2, 0.4, 1.0, 20, 6, 12,
+      new Color4(0.2, 1, 0.1, 0.7), new Color4(0.1, 0.7, 0.05, 0.5), new Color4(0, 0, 0, 0));
+  }
+  private addStardustRain(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('stardust_rain', planet, radius, planetId, 400, radius * 2, 0.03, 0.1, 100, 1, 4,
+      new Color4(1, 0.95, 0.5, 1), new Color4(1, 0.8, 0.3, 0.8), new Color4(0, 0, 0, 0));
+  }
+  private addCandyConfetti(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('candy_confetti', planet, radius, planetId, 200, radius * 1.7, 0.1, 0.3, 50, 2, 5,
+      new Color4(1, 0.3, 0.6, 1), new Color4(0.3, 0.8, 1, 1), new Color4(0, 0, 0, 0));
+  }
+  private addButterflyShower(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('butterfly_shower', planet, radius, planetId, 100, radius * 2, 0.2, 0.5, 25, 3, 7,
+      new Color4(0.6, 0.2, 1, 1), new Color4(1, 0.5, 0.1, 1), new Color4(0, 0, 0, 0));
+  }
+  private addGhostWisps(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('ghost_wisps', planet, radius, planetId, 50, radius * 2, 0.3, 0.8, 15, 8, 15,
+      new Color4(0.9, 0.95, 1, 0.6), new Color4(0.7, 0.8, 1, 0.4), new Color4(0, 0, 0, 0));
+  }
+  private addCrystalShards(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('crystal_shards', planet, radius, planetId, 150, radius * 1.8, 0.1, 0.3, 40, 2, 6,
+      new Color4(0.8, 0.9, 1, 1), new Color4(0.5, 0.8, 1, 1), new Color4(0, 0, 0, 0));
+  }
+  private addLoveHearts(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('love_hearts', planet, radius, planetId, 120, radius * 1.8, 0.15, 0.4, 30, 2, 6,
+      new Color4(1, 0.3, 0.5, 1), new Color4(1, 0.6, 0.7, 0.9), new Color4(0, 0, 0, 0));
+  }
+  private addSandVortex(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('sand_vortex', planet, radius, planetId, 250, radius * 1.6, 0.2, 0.5, 60, 1, 4,
+      new Color4(0.9, 0.75, 0.3, 1), new Color4(0.7, 0.5, 0.15, 0.8), new Color4(0, 0, 0, 0), 0.5);
+  }
+  private addCosmicWeb(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('cosmic_web', planet, radius, planetId, 200, radius * 2, 0.05, 0.15, 50, 3, 7,
+      new Color4(0.9, 0.9, 1, 0.9), new Color4(0.7, 0.7, 0.9, 0.7), new Color4(0, 0, 0, 0));
+  }
+  private addMusicParticles(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('music_particles', planet, radius, planetId, 160, radius * 1.8, 0.1, 0.3, 40, 2, 5,
+      new Color4(0.4, 0.8, 1, 1), new Color4(1, 0.3, 0.8, 1), new Color4(0, 0, 0, 0));
+  }
+  private addQuantumFoam(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('quantum_foam', planet, radius, planetId, 500, radius * 1.3, 0.03, 0.1, 120, 0.3, 1.5,
+      new Color4(0.6, 0.9, 1, 1), new Color4(0.4, 0.7, 1, 0.8), new Color4(0, 0, 0, 0));
+  }
+  private addRainbowMist(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('rainbow_mist', planet, radius, planetId, 80, radius * 2.2, 0.4, 1.2, 20, 4, 10,
+      new Color4(1, 0.5, 0.5, 0.6), new Color4(0.5, 0.5, 1, 0.6), new Color4(0, 0, 0, 0));
+  }
+  private addVoidParticles(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('void_particles', planet, radius, planetId, 200, radius * 1.8, 0.1, 0.3, 50, 2, 6,
+      new Color4(0.3, 0.1, 0.5, 0.9), new Color4(0.1, 0.05, 0.2, 0.7), new Color4(0, 0, 0, 0));
+  }
+  private addAncientDust(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('ancient_dust', planet, radius, planetId, 250, radius * 2, 0.05, 0.2, 60, 3, 8,
+      new Color4(1, 0.9, 0.5, 0.9), new Color4(0.8, 0.7, 0.3, 0.7), new Color4(0, 0, 0, 0));
+  }
+  private addWaterDroplets(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('water_droplets', planet, radius, planetId, 280, radius * 1.7, 0.08, 0.2, 70, 1, 4,
+      new Color4(0.4, 0.7, 1, 0.9), new Color4(0.2, 0.5, 1, 0.7), new Color4(0, 0, 0, 0));
+  }
+  private addNeonRain(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('neon_rain', planet, radius, planetId, 350, radius * 2, 0.05, 0.12, 90, 0.5, 3,
+      new Color4(0, 1, 0.8, 1), new Color4(1, 0, 1, 1), new Color4(0, 0, 0, 0), 1.5);
+  }
+  private addPhoenixSparks(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('phoenix_sparks', planet, radius, planetId, 300, radius * 1.5, 0.08, 0.2, 70, 1, 3,
+      new Color4(1, 0.3, 0.05, 1), new Color4(1, 0.8, 0.1, 1), new Color4(0, 0, 0, 0), 1.8);
+  }
+  private addIcyFlakes(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('icy_flakes', planet, radius, planetId, 200, radius * 2, 0.08, 0.25, 50, 2, 6,
+      new Color4(0.7, 0.9, 1, 0.9), new Color4(0.5, 0.8, 1, 0.7), new Color4(0, 0, 0, 0));
+  }
+  private addSolarWind(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('solar_wind', planet, radius, planetId, 600, radius * 1.5, 0.03, 0.08, 150, 0.3, 2,
+      new Color4(1, 0.98, 0.9, 1), new Color4(1, 0.9, 0.7, 0.8), new Color4(0, 0, 0, 0), 3.0);
+  }
+  private addToxicBubbles(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('toxic_bubbles', planet, radius, planetId, 100, radius * 1.8, 0.15, 0.4, 25, 3, 7,
+      new Color4(0.3, 1, 0.2, 0.8), new Color4(0.1, 0.7, 0.1, 0.6), new Color4(0, 0, 0, 0));
+  }
+  private addDreamWisps(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('dream_wisps', planet, radius, planetId, 80, radius * 2, 0.2, 0.6, 20, 4, 10,
+      new Color4(0.7, 0.4, 1, 0.8), new Color4(0.5, 0.2, 0.9, 0.6), new Color4(0, 0, 0, 0));
+  }
+  private addGoldenSparkles(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('golden_sparkles', planet, radius, planetId, 320, radius * 1.8, 0.08, 0.25, 80, 1, 4,
+      new Color4(1, 0.9, 0.2, 1), new Color4(1, 0.75, 0.1, 0.9), new Color4(0, 0, 0, 0));
+  }
+  private addGalaxyMotes(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('galaxy_motes', planet, radius, planetId, 320, radius * 2.2, 0.04, 0.12, 80, 2, 7,
+      new Color4(0.4, 0.3, 1, 0.9), new Color4(0.2, 0.1, 0.6, 0.7), new Color4(0, 0, 0, 0));
+  }
+  private addPlasmaSparks(planet: Mesh, radius: number, planetId: string): void {
+    this.makeParticleEffect('plasma_sparks', planet, radius, planetId, 400, radius * 1.5, 0.06, 0.18, 100, 0.5, 2.5,
+      new Color4(0.3, 0.8, 1, 1), new Color4(0.1, 0.5, 1, 1), new Color4(0, 0, 0, 0), 2.5);
+  }
+
+  // ── Glow/Shell Effects (25) ────────────────────────────────────────────────
+  private addDarkMatterShell(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('dark_matter_shell', planet, radius, planetId, 0.1, 0, 0.2, 1.4, 0.2, 0.1, 0.02);
+  }
+  private addPlasmaMantle(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('plasma_mantle', planet, radius, planetId, 0, 0.5, 1, 1.3, 0.22, 0.15, 0.05);
+  }
+  private addJadeAura(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('jade_aura', planet, radius, planetId, 0.1, 0.9, 0.4, 1.35, 0.2, 0.08, 0.03);
+  }
+  private addGoldenDivine(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('golden_divine', planet, radius, planetId, 1, 0.85, 0.3, 1.4, 0.18, 0.12, 0.04);
+  }
+  private addVoidAura(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('void_aura', planet, radius, planetId, 0.05, 0, 0.1, 1.5, 0.25, 0.05, 0.01);
+  }
+  private addLunarGlow(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('lunar_glow', planet, radius, planetId, 0.7, 0.8, 1, 1.3, 0.15, 0.1, 0.03);
+  }
+  private addFlameShell(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('flame_shell', planet, radius, planetId, 1, 0.4, 0.1, 1.35, 0.2, 0.18, 0.06);
+  }
+  private addIceShell(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('ice_shell', planet, radius, planetId, 0.5, 0.85, 1, 1.4, 0.18, 0.07, 0.025);
+  }
+  private addThunderMantle(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('thunder_mantle', planet, radius, planetId, 0.4, 0.6, 1, 1.32, 0.2, 0.2, 0.08);
+  }
+  private addPrismaticShell(planet: Mesh, radius: number, planetId: string): void {
+    const sphere = MeshBuilder.CreateSphere('custom_prismatic_shell_' + planetId, { diameter: radius * 2 * 1.38, segments: 16 }, this.scene);
+    sphere.parent = planet; sphere.position = Vector3.Zero(); sphere.isPickable = false;
+    const mat = new StandardMaterial('custom_prismatic_shellMat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(1, 1, 1); mat.alpha = 0.12; mat.backFaceCulling = false;
+    sphere.material = mat;
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(sphere);
+    let t = 0;
+    const cb = () => {
+      if (sphere.isDisposed()) return;
+      t += 0.04;
+      sphere.scaling.setAll(1 + Math.sin(t) * 0.1);
+      mat.emissiveColor.set(0.5 + 0.5 * Math.sin(t), 0.5 + 0.5 * Math.sin(t + 2.1), 0.5 + 0.5 * Math.sin(t + 4.2));
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addSpectralVeil(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('spectral_veil', planet, radius, planetId, 0.9, 0.95, 1, 1.45, 0.1, 0.06, 0.02);
+  }
+  private addSolarCorona(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('solar_corona', planet, radius, planetId, 1, 0.7, 0.2, 1.5, 0.15, 0.2, 0.07);
+  }
+  private addNatureBloom(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('nature_bloom', planet, radius, planetId, 0.2, 0.9, 0.3, 1.3, 0.2, 0.1, 0.03);
+  }
+  private addHolographicField(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('holographic_field', planet, radius, planetId, 0, 0.9, 0.9, 1.4, 0.15, 0.12, 0.05);
+  }
+  private addShadowCloak(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('shadow_cloak', planet, radius, planetId, 0.1, 0.05, 0.15, 1.35, 0.3, 0.05, 0.02);
+  }
+  private addRoseQuartzGlow(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('rose_quartz_glow', planet, radius, planetId, 1, 0.6, 0.75, 1.35, 0.18, 0.1, 0.04);
+  }
+  private addSapphireAura(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('sapphire_aura', planet, radius, planetId, 0.1, 0.3, 1, 1.4, 0.2, 0.12, 0.04);
+  }
+  private addEmeraldPulse(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('emerald_pulse', planet, radius, planetId, 0.1, 1, 0.3, 1.35, 0.2, 0.15, 0.05);
+  }
+  private addRubyGlow(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('ruby_glow', planet, radius, planetId, 1, 0.1, 0.2, 1.38, 0.2, 0.14, 0.05);
+  }
+  private addObsidianShell(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('obsidian_shell', planet, radius, planetId, 0.05, 0.02, 0.08, 1.4, 0.35, 0.04, 0.02);
+  }
+  private addAmethystHaze(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('amethyst_haze', planet, radius, planetId, 0.7, 0.2, 1, 1.42, 0.18, 0.1, 0.035);
+  }
+  private addTopazShimmer(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('topaz_shimmer', planet, radius, planetId, 1, 0.85, 0.2, 1.36, 0.18, 0.12, 0.05);
+  }
+  private addOpalGlow(planet: Mesh, radius: number, planetId: string): void {
+    const sphere = MeshBuilder.CreateSphere('custom_opal_glow_' + planetId, { diameter: radius * 2 * 1.38, segments: 16 }, this.scene);
+    sphere.parent = planet; sphere.position = Vector3.Zero(); sphere.isPickable = false;
+    const mat = new StandardMaterial('custom_opal_glowMat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(1, 0.9, 1); mat.alpha = 0.16; mat.backFaceCulling = false;
+    sphere.material = mat;
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(sphere);
+    let t = 0;
+    const cb = () => {
+      if (sphere.isDisposed()) return;
+      t += 0.04;
+      sphere.scaling.setAll(1 + Math.sin(t) * 0.1);
+      mat.emissiveColor.set(0.8 + 0.2 * Math.sin(t * 0.7), 0.7 + 0.3 * Math.sin(t * 1.1), 0.8 + 0.2 * Math.sin(t * 0.5));
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addDivineLightAura(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('divine_light_aura', planet, radius, planetId, 1, 1, 0.95, 1.5, 0.14, 0.2, 0.06);
+  }
+  private addAbyssalDark(planet: Mesh, radius: number, planetId: string): void {
+    this.makeGlowShell('abyssal_dark', planet, radius, planetId, 0, 0, 0.02, 1.6, 0.4, 0.03, 0.01);
+  }
+
+  // ── Ring/Torus Effects (15) ────────────────────────────────────────────────
+  private addRainbowRings(planet: Mesh, radius: number, planetId: string): void {
+    const colors = [new Color3(1,0.2,0.2), new Color3(1,0.7,0.1), new Color3(0.2,1,0.2), new Color3(0.2,0.5,1), new Color3(0.8,0.2,1)];
+    this.makeRings('rainbow_rings', planet, radius, planetId, colors.map((c,i) => ({
+      color: c, diameterMult: 2.5+i*0.4, thickness: 0.2, alpha: 0.7,
+      rotX: i*0.4, rotZ: i*0.3, spinX: 0.005*((i%2)*2-1), spinY: 0.008, spinZ: 0.003
+    })));
+  }
+  private addNeonRings(planet: Mesh, radius: number, planetId: string): void {
+    const colors = [new Color3(0,1,1), new Color3(1,0,1), new Color3(1,1,0)];
+    this.makeRings('neon_rings', planet, radius, planetId, colors.map((c,i) => ({
+      color: c, diameterMult: 2.6+i*0.5, thickness: 0.18, alpha: 0.75,
+      rotX: 0.3+i*0.5, rotZ: i*0.4, spinX: 0, spinY: 0.015*((i%2)*2-1), spinZ: 0.005
+    })));
+  }
+  private addPearlRings(planet: Mesh, radius: number, planetId: string): void {
+    const colors = [new Color3(1,0.97,0.95), new Color3(0.95,0.9,1)];
+    this.makeRings('pearl_rings', planet, radius, planetId, colors.map((c,i) => ({
+      color: c, diameterMult: 2.8+i*0.4, thickness: 0.22, alpha: 0.6,
+      rotX: Math.PI/2+i*0.15, rotZ: i*0.1, spinX: 0.002, spinY: 0.003*((i%2)*2-1), spinZ: 0
+    })));
+  }
+  private addFireRing(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('fire_ring', planet, radius, planetId, [{
+      color: new Color3(1,0.4,0.05), diameterMult: 3.2, thickness: 0.3, alpha: 0.8,
+      rotX: Math.PI/2, rotZ: 0.1, spinX: 0, spinY: 0.012, spinZ: 0
+    }]);
+  }
+  private addIceRing(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('ice_ring', planet, radius, planetId, [{
+      color: new Color3(0.6,0.9,1), diameterMult: 3.5, thickness: 0.25, alpha: 0.65,
+      rotX: Math.PI/2+0.08, rotZ: 0, spinX: 0, spinY: 0.006, spinZ: 0
+    }]);
+  }
+  private addVoidRing(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('void_ring', planet, radius, planetId, [{
+      color: new Color3(0.15,0.05,0.3), diameterMult: 3.0, thickness: 0.4, alpha: 0.85,
+      rotX: Math.PI/2, rotZ: 0.2, spinX: 0, spinY: -0.008, spinZ: 0
+    }]);
+  }
+  private addGoldenHaloRing(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('golden_halo_ring', planet, radius, planetId, [{
+      color: new Color3(1,0.88,0.3), diameterMult: 2.8, thickness: 0.15, alpha: 0.75,
+      rotX: 0.3, rotZ: 0, spinX: 0.001, spinY: 0.005, spinZ: 0.001
+    }]);
+  }
+  private addRadiantHaloRings(planet: Mesh, radius: number, planetId: string): void {
+    const colors = [new Color3(1,0.9,0.3), new Color3(1,1,0.9), new Color3(0.9,0.8,0.5)];
+    this.makeRings('radiant_halo_rings', planet, radius, planetId, colors.map((c,i) => ({
+      color: c, diameterMult: 2.5+i*0.3, thickness: 0.13, alpha: 0.7-i*0.1,
+      rotX: 0.2+i*0.1, rotZ: 0, spinX: 0.001, spinY: 0.004*(i+1), spinZ: 0
+    })));
+  }
+  private addEclipseRing(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('eclipse_ring', planet, radius, planetId, [{
+      color: new Color3(0.05,0.02,0.1), diameterMult: 4.0, thickness: 0.5, alpha: 0.9,
+      rotX: Math.PI/2, rotZ: 0, spinX: 0, spinY: 0.004, spinZ: 0
+    }]);
+  }
+  private addAtomicRings(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('atomic_rings', planet, radius, planetId, [
+      {color: new Color3(0.3,0.8,1), diameterMult: 2.8, thickness: 0.15, alpha: 0.7, rotX: 0, rotZ: 0, spinX: 0.015, spinY: 0, spinZ: 0},
+      {color: new Color3(0.8,0.3,1), diameterMult: 2.8, thickness: 0.15, alpha: 0.7, rotX: Math.PI/2, rotZ: 0, spinX: 0, spinY: 0.015, spinZ: 0},
+      {color: new Color3(0.3,1,0.5), diameterMult: 2.8, thickness: 0.15, alpha: 0.7, rotX: Math.PI/4, rotZ: Math.PI/4, spinX: 0, spinY: 0, spinZ: 0.015},
+    ]);
+  }
+  private addDoubleHelixRing(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('double_helix_ring', planet, radius, planetId, [
+      {color: new Color3(0.3,1,0.6), diameterMult: 2.6, thickness: 0.18, alpha: 0.7, rotX: 0.8, rotZ: 0, spinX: 0.006, spinY: 0.008, spinZ: 0},
+      {color: new Color3(1,0.5,0.3), diameterMult: 2.6, thickness: 0.18, alpha: 0.7, rotX: -0.8, rotZ: 0, spinX: -0.006, spinY: 0.008, spinZ: 0},
+    ]);
+  }
+  private addSpiralRings(planet: Mesh, radius: number, planetId: string): void {
+    const colors = [new Color3(1,0.5,0.2), new Color3(0.5,1,0.2), new Color3(0.2,0.5,1), new Color3(1,0.2,0.8)];
+    this.makeRings('spiral_rings', planet, radius, planetId, colors.map((c,i) => ({
+      color: c, diameterMult: 2.2+i*0.5, thickness: 0.15, alpha: 0.65,
+      rotX: i*0.5, rotZ: i*0.4, spinX: 0.004, spinY: 0.007*(i+1)*0.5, spinZ: 0.003
+    })));
+  }
+  private addElectricHoop(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('electric_hoop', planet, radius, planetId, [{
+      color: new Color3(0.3,0.7,1), diameterMult: 3.0, thickness: 0.12, alpha: 0.85,
+      rotX: Math.PI/2, rotZ: 0.3, spinX: 0.02, spinY: 0.03, spinZ: 0.015
+    }]);
+  }
+  private addCosmicCrownRings(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('cosmic_crown_rings', planet, radius, planetId, [
+      {color: new Color3(1,0.85,0.2), diameterMult: 2.4, thickness: 0.18, alpha: 0.75, rotX: 1.2, rotZ: 0, spinX: 0.003, spinY: 0.005, spinZ: 0},
+      {color: new Color3(1,0.6,0.1), diameterMult: 2.4, thickness: 0.18, alpha: 0.75, rotX: 1.2, rotZ: 2.1, spinX: 0.003, spinY: 0.005, spinZ: 0},
+      {color: new Color3(1,1,0.5), diameterMult: 2.4, thickness: 0.18, alpha: 0.75, rotX: 1.2, rotZ: 4.2, spinX: 0.003, spinY: 0.005, spinZ: 0},
+    ]);
+  }
+  private addSakuraRing(planet: Mesh, radius: number, planetId: string): void {
+    this.makeRings('sakura_ring', planet, radius, planetId, [{
+      color: new Color3(1,0.65,0.75), diameterMult: 3.2, thickness: 0.2, alpha: 0.7,
+      rotX: Math.PI/2, rotZ: 0.05, spinX: 0, spinY: 0.005, spinZ: 0
+    }]);
+  }
+
+  // ── Orbiting Objects (20) ──────────────────────────────────────────────────
+  private addTripleMoons(planet: Mesh, radius: number, planetId: string): void {
+    const speeds = [0.008, 0.005, 0.011];
+    const orbits = [radius*3, radius*4.5, radius*6];
+    const tilts = [0.1, 0.25, 0.15];
+    const moonObjs: {mesh: Mesh; angle: number; speed: number; orbitR: number; tilt: number}[] = [];
+    for (let i = 0; i < 3; i++) {
+      const m = MeshBuilder.CreateSphere('custom_triple_moon' + i + '_' + planetId, {diameter: radius*0.4}, this.scene);
+      m.parent = planet;
+      const mat = new StandardMaterial('custom_triple_moonMat' + i + '_' + planetId, this.scene);
+      mat.emissiveColor = new Color3(0.7, 0.75, 0.8);
+      m.material = mat; m.isPickable = false;
+      moonObjs.push({mesh: m, angle: (i/3)*Math.PI*2, speed: speeds[i], orbitR: orbits[i], tilt: tilts[i]});
+    }
+    const cb = () => {
+      moonObjs.forEach(o => {
+        if (o.mesh.isDisposed()) return;
+        o.angle += o.speed;
+        o.mesh.position.x = Math.cos(o.angle) * o.orbitR;
+        o.mesh.position.z = Math.sin(o.angle) * o.orbitR;
+        o.mesh.position.y = Math.sin(o.angle * 0.5) * o.orbitR * o.tilt;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addAsteroidBeltOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('asteroid_belt', planet, radius, planetId, 12, 'box', radius*0.2,
+      radius*4, new Color3(0.5,0.4,0.3), new Color3(0.15,0.1,0.05), 0.003, 0.08, false);
+  }
+  private addGemOrbit(planet: Mesh, radius: number, planetId: string): void {
+    const colors = [new Color3(1,0.2,0.2), new Color3(0.2,1,0.4), new Color3(0.2,0.5,1), new Color3(1,0.9,0.2), new Color3(0.8,0.2,1), new Color3(1,0.5,0.1)];
+    const objs: {mesh: Mesh; angle: number}[] = [];
+    for (let i = 0; i < 6; i++) {
+      // Octahedron (type 1) looks like a real faceted gemstone/diamond
+      const m = MeshBuilder.CreatePolyhedron('custom_gem_orbit' + i + '_' + planetId, {type: 1, size: radius * 0.15}, this.scene);
+      m.parent = planet;
+      const mat = new PBRMaterial('custom_gem_orbitMat' + i + '_' + planetId, this.scene);
+      mat.albedoColor = colors[i]; mat.emissiveColor = colors[i].scale(0.5); mat.metallic = 0; mat.roughness = 0;
+      m.material = mat; m.isPickable = false;
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(m);
+      objs.push({mesh: m, angle: (i/6)*Math.PI*2});
+    }
+    const r2 = radius * 3.5;
+    const cb = () => {
+      objs.forEach(o => {
+        if (o.mesh.isDisposed()) return;
+        o.angle += 0.009;
+        o.mesh.position.x = Math.cos(o.angle) * r2;
+        o.mesh.position.z = Math.sin(o.angle) * r2;
+        o.mesh.position.y = Math.sin(o.angle * 1.2) * r2 * 0.1;
+        o.mesh.rotation.y += 0.02;
+        o.mesh.rotation.x += 0.01;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addCrystalOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('crystal_orbit', planet, radius, planetId, 5, 'box', radius*0.35,
+      radius*4, new Color3(0.7,0.9,1), new Color3(0.4,0.7,1), 0.007, 0.12);
+  }
+  private addFairyLightsOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('fairy_lights', planet, radius, planetId, 15, 'sphere', radius*0.12,
+      radius*2.8, new Color3(1,1,0.5), new Color3(1,0.9,0.3), 0.012, 0.15);
+  }
+  private addSatelliteSwarm(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('satellite', planet, radius, planetId, 8, 'box', radius*0.25,
+      radius*4, new Color3(0.7,0.7,0.8), new Color3(0.3,0.4,0.5), 0.006, 0.05, false);
+  }
+  private addLotusOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('lotus', planet, radius, planetId, 6, 'cylinder', radius*0.3,
+      radius*3, new Color3(1,0.7,0.8), new Color3(0.8,0.4,0.6), 0.007, 0.08);
+  }
+  private addClockworkOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('clockwork', planet, radius, planetId, 6, 'cylinder', radius*0.3,
+      radius*3.5, new Color3(0.8,0.65,0.2), new Color3(0.6,0.5,0.1), 0.014, 0.05, false);
+  }
+  private addSoulLanternsOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('soul_lantern', planet, radius, planetId, 5, 'box', radius*0.28,
+      radius*3.2, new Color3(1,0.75,0.3), new Color3(1,0.6,0.1), 0.007, 0.1);
+  }
+  private addStarCompanions(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('star_comp', planet, radius, planetId, 6, 'sphere', radius*0.22,
+      radius*3, new Color3(1,0.95,0.4), new Color3(1,0.9,0.2), 0.009, 0.1);
+  }
+  private addDiamondOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('diamond', planet, radius, planetId, 8, 'box', radius*0.2,
+      radius*3.5, new Color3(0.9,0.95,1), new Color3(0.6,0.8,1), 0.008, 0.08);
+  }
+  private addAncientOrbs(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('ancient_orb', planet, radius, planetId, 4, 'sphere', radius*0.5,
+      radius*5, new Color3(0.6,0.3,1), new Color3(0.4,0.1,0.8), 0.004, 0.15);
+  }
+  private addBinaryMoons(planet: Mesh, radius: number, planetId: string): void {
+    let angle1 = 0, angle2 = Math.PI;
+    const orbitR = radius * 4.5;
+    const m1 = MeshBuilder.CreateSphere('custom_binary_moon1_' + planetId, {diameter: radius*0.38}, this.scene);
+    const m2 = MeshBuilder.CreateSphere('custom_binary_moon2_' + planetId, {diameter: radius*0.32}, this.scene);
+    [m1, m2].forEach((m, i) => {
+      m.parent = planet;
+      const mat = new StandardMaterial('custom_binary_moonMat' + i + '_' + planetId, this.scene);
+      mat.emissiveColor = new Color3(0.75, 0.8, 0.85);
+      m.material = mat; m.isPickable = false;
+    });
+    const cb = () => {
+      if (m1.isDisposed() || m2.isDisposed()) return;
+      angle1 += 0.007; angle2 += 0.007;
+      m1.position.x = Math.cos(angle1) * orbitR; m1.position.z = Math.sin(angle1) * orbitR; m1.position.y = Math.sin(angle1 * 0.6) * orbitR * 0.1;
+      m2.position.x = Math.cos(angle2) * orbitR; m2.position.z = Math.sin(angle2) * orbitR; m2.position.y = Math.sin(angle2 * 0.6) * orbitR * 0.1;
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addPrismTowersOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('prism_tower', planet, radius, planetId, 6, 'cylinder', radius*0.3,
+      radius*3.5, new Color3(0.8,0.6,1), new Color3(0.5,0.3,1), 0.006, 0.06);
+  }
+  private addFlowerCompanions(planet: Mesh, radius: number, planetId: string): void {
+    const flowerColors = [new Color3(1,0.4,0.6), new Color3(1,0.8,0.3), new Color3(0.4,0.9,0.5), new Color3(0.5,0.5,1), new Color3(1,0.5,0.2), new Color3(0.8,0.3,1), new Color3(1,0.9,0.5), new Color3(0.3,0.8,1)];
+    const objs: {mesh: Mesh; angle: number}[] = [];
+    for (let i = 0; i < 8; i++) {
+      const m = MeshBuilder.CreateSphere('custom_flower_comp' + i + '_' + planetId, {diameter: radius*0.22}, this.scene);
+      m.parent = planet;
+      const mat = new PBRMaterial('custom_flower_compMat' + i + '_' + planetId, this.scene);
+      mat.albedoColor = flowerColors[i]; mat.emissiveColor = flowerColors[i].scale(0.4); mat.metallic = 0; mat.roughness = 0.3;
+      m.material = mat; m.isPickable = false;
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(m);
+      objs.push({mesh: m, angle: (i/8)*Math.PI*2});
+    }
+    const orbitR = radius * 3;
+    const cb = () => {
+      objs.forEach(o => {
+        if (o.mesh.isDisposed()) return;
+        o.angle += 0.008;
+        o.mesh.position.x = Math.cos(o.angle) * orbitR;
+        o.mesh.position.z = Math.sin(o.angle) * orbitR;
+        o.mesh.position.y = Math.sin(o.angle * 1.3) * orbitR * 0.05;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addSacredGeometryOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('sacred_geo', planet, radius, planetId, 3, 'box', radius*0.4,
+      radius*4, new Color3(1,0.85,0.3), new Color3(0.8,0.65,0.1), 0.005, 0.18);
+  }
+  private addIcePillarOrbit(planet: Mesh, radius: number, planetId: string): void {
+    this.makeOrbitingObjects('ice_pillar', planet, radius, planetId, 6, 'cylinder', radius*0.35,
+      radius*3.2, new Color3(0.7,0.92,1), new Color3(0.4,0.75,1), 0.006, 0.05);
+  }
+  private addThunderOrbsOrbit(planet: Mesh, radius: number, planetId: string): void {
+    const objs: {mesh: Mesh; angle: number; t: number}[] = [];
+    for (let i = 0; i < 4; i++) {
+      const m = MeshBuilder.CreateSphere('custom_thunder_orb' + i + '_' + planetId, {diameter: radius*0.4}, this.scene);
+      m.parent = planet;
+      const mat = new StandardMaterial('custom_thunder_orbMat' + i + '_' + planetId, this.scene);
+      mat.emissiveColor = new Color3(0.3, 0.6, 1);
+      m.material = mat; m.isPickable = false;
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(m);
+      objs.push({mesh: m, angle: (i/4)*Math.PI*2, t: 0});
+    }
+    const orbitR = radius * 4;
+    const cb = () => {
+      objs.forEach(o => {
+        if (o.mesh.isDisposed()) return;
+        o.angle += 0.007; o.t += 0.1;
+        o.mesh.position.x = Math.cos(o.angle) * orbitR;
+        o.mesh.position.z = Math.sin(o.angle) * orbitR;
+        o.mesh.position.y = Math.sin(o.angle) * orbitR * 0.12;
+        const mat = o.mesh.material as StandardMaterial;
+        if (mat) mat.emissiveColor.set(0.2 + 0.5*Math.abs(Math.sin(o.t)), 0.4 + 0.3*Math.abs(Math.sin(o.t*0.7)), 1);
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addMiniPlanetsOrbit(planet: Mesh, radius: number, planetId: string): void {
+    const objs: {planet: Mesh; ring: Mesh; angle: number}[] = [];
+    for (let i = 0; i < 3; i++) {
+      const p = MeshBuilder.CreateSphere('custom_mini_planet' + i + '_' + planetId, {diameter: radius*0.4}, this.scene);
+      const ring = MeshBuilder.CreateTorus('custom_mini_ring' + i + '_' + planetId, {diameter: radius*0.8, thickness: 0.06, tessellation: 32}, this.scene);
+      p.parent = planet; ring.parent = p; ring.rotation.x = Math.PI/2;
+      const colors = [new Color3(0.8,0.5,0.3), new Color3(0.4,0.7,1), new Color3(0.6,1,0.5)];
+      const pm = new StandardMaterial('custom_mini_pMat' + i + '_' + planetId, this.scene);
+      pm.emissiveColor = colors[i]; p.material = pm; p.isPickable = false;
+      const rm = new StandardMaterial('custom_mini_rMat' + i + '_' + planetId, this.scene);
+      rm.emissiveColor = new Color3(0.9,0.8,0.6); rm.alpha = 0.7; ring.material = rm; ring.isPickable = false;
+      objs.push({planet: p, ring, angle: (i/3)*Math.PI*2});
+    }
+    const orbR = radius * 5.5;
+    const cb = () => {
+      objs.forEach(o => {
+        if (o.planet.isDisposed()) return;
+        o.angle += 0.004;
+        o.planet.position.x = Math.cos(o.angle) * orbR;
+        o.planet.position.z = Math.sin(o.angle) * orbR;
+        o.planet.position.y = Math.sin(o.angle * 0.8) * orbR * 0.1;
+        o.ring.rotation.y += 0.02;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addCometCompanions(planet: Mesh, radius: number, planetId: string): void {
+    const objs: {mesh: Mesh; angle: number}[] = [];
+    for (let i = 0; i < 4; i++) {
+      const m = MeshBuilder.CreateSphere('custom_comet_comp' + i + '_' + planetId, {diameter: radius*0.28}, this.scene);
+      m.parent = planet;
+      const mat = new StandardMaterial('custom_comet_compMat' + i + '_' + planetId, this.scene);
+      mat.emissiveColor = new Color3(0.7, 0.9, 1); m.material = mat; m.isPickable = false;
+      const sys = new ParticleSystem('custom_comet_compSys' + i + '_' + planetId, 50, this.scene);
+      sys.emitter = m; sys.particleEmitterType = new SphereParticleEmitter(0.1);
+      sys.minSize = 0.05; sys.maxSize = 0.15; sys.minLifeTime = 0.3; sys.maxLifeTime = 1;
+      sys.emitRate = 30; sys.blendMode = ParticleSystem.BLENDMODE_ADD;
+      sys.minEmitPower = 0.01; sys.maxEmitPower = 0.2;
+      sys.color1 = new Color4(0.5,0.8,1,1); sys.color2 = new Color4(0.3,0.6,1,0.5); sys.colorDead = new Color4(0,0,0,0);
+      sys.start();
+      this.trackCustomizationParticle(planetId, sys);
+      objs.push({mesh: m, angle: (i/4)*Math.PI*2});
+    }
+    const orbR = radius * 4;
+    const cb = () => {
+      objs.forEach(o => {
+        if (o.mesh.isDisposed()) return;
+        o.angle += 0.009;
+        o.mesh.position.x = Math.cos(o.angle) * orbR;
+        o.mesh.position.z = Math.sin(o.angle) * orbR;
+        o.mesh.position.y = Math.sin(o.angle * 0.6) * orbR * 0.15;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+
+  // ── Complex/Special Effects (10) ──────────────────────────────────────────
+  private addSupernovaPulse(planet: Mesh, radius: number, planetId: string): void {
+    let t = 0, pulseR = 0, active = false;
+    const ring = MeshBuilder.CreateTorus('custom_supernova_' + planetId,
+      {diameter: 1, thickness: 0.15, tessellation: 64}, this.scene);
+    ring.parent = planet; ring.position = Vector3.Zero(); ring.isPickable = false;
+    const mat = new StandardMaterial('custom_supernovaMat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(1, 0.5, 0.1); mat.alpha = 0; mat.backFaceCulling = false;
+    ring.material = mat;
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(ring);
+    const cb = () => {
+      if (ring.isDisposed()) return;
+      t += 0.016;
+      if (!active && t > 3) { active = true; pulseR = 0; t = 0; }
+      if (active) {
+        pulseR += 0.18;
+        ring.scaling.setAll(pulseR);
+        mat.alpha = Math.max(0, 0.9 - pulseR / 20);
+        if (pulseR > 20) { active = false; pulseR = 0; }
+      }
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addVortexStorm(planet: Mesh, radius: number, planetId: string): void {
+    const sys = new ParticleSystem('custom_vortex_' + planetId, 400, this.scene);
+    sys.emitter = planet;
+    const emitter = new SphereParticleEmitter(radius * 2.5);
+    emitter.radiusRange = 0.3;
+    sys.particleEmitterType = emitter;
+    sys.minSize = 0.15; sys.maxSize = 0.5; sys.minLifeTime = 1; sys.maxLifeTime = 3;
+    sys.emitRate = 100; sys.blendMode = ParticleSystem.BLENDMODE_ADD;
+    sys.minEmitPower = 0.5; sys.maxEmitPower = 1.5;
+    sys.color1 = new Color4(0.3, 0.4, 0.8, 0.8); sys.color2 = new Color4(0.6, 0.2, 0.8, 0.6); sys.colorDead = new Color4(0,0,0,0);
+    sys.gravity = new Vector3(0, 0, 0);
+    sys.start();
+    this.trackCustomizationParticle(planetId, sys);
+  }
+  private addAuroraPillars(planet: Mesh, radius: number, planetId: string): void {
+    const pillars = [
+      MeshBuilder.CreateCylinder('custom_aurora_pillar_n_' + planetId, {height: radius*5, diameter: radius*0.4, tessellation: 16}, this.scene),
+      MeshBuilder.CreateCylinder('custom_aurora_pillar_s_' + planetId, {height: radius*5, diameter: radius*0.4, tessellation: 16}, this.scene),
+    ];
+    const pColors = [new Color3(0.3, 1, 0.6), new Color3(0.3, 0.6, 1)];
+    pillars.forEach((p, i) => {
+      p.parent = planet; p.position = new Vector3(0, (i === 0 ? 1 : -1) * radius * 1.8, 0);
+      p.isPickable = false;
+      const mat = new StandardMaterial('custom_aurora_pillarMat' + i + '_' + planetId, this.scene);
+      mat.emissiveColor = pColors[i]; mat.alpha = 0.35; mat.backFaceCulling = false;
+      p.material = mat;
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(p);
+    });
+    let t = 0;
+    const cb = () => {
+      if (pillars[0].isDisposed()) return;
+      t += 0.03;
+      pillars.forEach((p, i) => {
+        const mat = p.material as StandardMaterial;
+        if (mat) { mat.emissiveColor.set(0.2+0.3*Math.sin(t+i), 0.6+0.4*Math.sin(t*0.7+i), 0.5+0.5*Math.sin(t*1.2)); mat.alpha = 0.25 + 0.15 * Math.abs(Math.sin(t)); }
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addGalaxySwirl(planet: Mesh, radius: number, planetId: string): void {
+    const sys = new ParticleSystem('custom_galaxy_swirl_' + planetId, 500, this.scene);
+    sys.emitter = planet;
+    sys.particleEmitterType = new SphereParticleEmitter(radius * 4);
+    sys.minSize = 0.05; sys.maxSize = 0.2; sys.minLifeTime = 4; sys.maxLifeTime = 8;
+    sys.emitRate = 60; sys.blendMode = ParticleSystem.BLENDMODE_ADD;
+    sys.minEmitPower = 0.05; sys.maxEmitPower = 0.2;
+    sys.color1 = new Color4(0.6, 0.4, 1, 0.7); sys.color2 = new Color4(0.2, 0.5, 1, 0.5); sys.colorDead = new Color4(0,0,0,0);
+    sys.gravity = new Vector3(0, 0, 0);
+    sys.start();
+    this.trackCustomizationParticle(planetId, sys);
+  }
+  private addTimeRipple(planet: Mesh, radius: number, planetId: string): void {
+    let t = 0, rScale = 0, active = false;
+    const ring = MeshBuilder.CreateTorus('custom_time_ripple_' + planetId,
+      {diameter: radius * 4, thickness: 0.08, tessellation: 64}, this.scene);
+    ring.parent = planet; ring.position = Vector3.Zero(); ring.isPickable = false;
+    const mat = new StandardMaterial('custom_time_rippleMat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(0.5, 0.8, 1); mat.alpha = 0; mat.backFaceCulling = false;
+    ring.material = mat;
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(ring);
+    const cb = () => {
+      if (ring.isDisposed()) return;
+      t += 0.016;
+      if (!active && t > 1.5) { active = true; rScale = 0.3; t = 0; }
+      if (active) {
+        rScale += 0.06;
+        ring.scaling.setAll(rScale);
+        mat.alpha = Math.max(0, 0.7 - rScale / 10);
+        if (rScale > 10) { active = false; rScale = 0; }
+      }
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addEclipseShadow(planet: Mesh, radius: number, planetId: string): void {
+    const shadow = MeshBuilder.CreateSphere('custom_eclipse_shadow_' + planetId, {diameter: radius*2.1, segments: 16}, this.scene);
+    shadow.parent = planet; shadow.isPickable = false;
+    const mat = new StandardMaterial('custom_eclipse_shadowMat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(0, 0, 0); mat.alpha = 0.75; mat.backFaceCulling = false;
+    shadow.material = mat;
+    let angle = 0;
+    const orbitR = radius * 1.05;
+    const cb = () => {
+      if (shadow.isDisposed()) return;
+      angle += 0.003;
+      shadow.position.x = Math.cos(angle) * orbitR;
+      shadow.position.z = Math.sin(angle) * orbitR * 0.3;
+      shadow.position.y = Math.sin(angle * 0.4) * orbitR * 0.1;
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addNorthernLightsEffect(planet: Mesh, radius: number, planetId: string): void {
+    const nlColors: [Color4, Color4][] = [
+      [new Color4(0.1,1,0.5,0.6), new Color4(0.1,0.7,1,0.4)],
+      [new Color4(0.5,0.1,1,0.5), new Color4(0.3,1,0.7,0.3)],
+    ];
+    nlColors.forEach(([c1, c2], i) => {
+      const sys = new ParticleSystem('custom_northern' + i + '_' + planetId, 200, this.scene);
+      sys.emitter = planet;
+      sys.particleEmitterType = new SphereParticleEmitter(radius * (2 + i));
+      sys.minSize = 0.2; sys.maxSize = 0.8; sys.minLifeTime = 2; sys.maxLifeTime = 5;
+      sys.emitRate = 40; sys.blendMode = ParticleSystem.BLENDMODE_ADD;
+      sys.minEmitPower = 0.1; sys.maxEmitPower = 0.3;
+      sys.color1 = c1; sys.color2 = c2; sys.colorDead = new Color4(0,0,0,0);
+      sys.gravity = new Vector3(0, 0, 0);
+      sys.start();
+      this.trackCustomizationParticle(planetId, sys);
+    });
+  }
+  private addCosmicBloomEffect(planet: Mesh, radius: number, planetId: string): void {
+    const petals: Mesh[] = [];
+    for (let i = 0; i < 6; i++) {
+      const petal = MeshBuilder.CreateSphere('custom_bloom_petal' + i + '_' + planetId, {diameter: radius*0.6, segments: 8}, this.scene);
+      petal.parent = planet; petal.isPickable = false;
+      const mat = new StandardMaterial('custom_bloom_petalMat' + i + '_' + planetId, this.scene);
+      mat.emissiveColor = new Color3(1, 0.5+i*0.08, 0.6); mat.alpha = 0.7; mat.backFaceCulling = false;
+      petal.material = mat;
+      if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(petal);
+      petals.push(petal);
+    }
+    let t = 0;
+    const cb = () => {
+      if (petals[0].isDisposed()) return;
+      t += 0.02;
+      const bloomScale = 1 + 0.8 * Math.abs(Math.sin(t * 0.5));
+      petals.forEach((p, i) => {
+        const angle = (i / petals.length) * Math.PI * 2;
+        p.position.x = Math.cos(angle) * radius * bloomScale;
+        p.position.z = Math.sin(angle) * radius * bloomScale;
+        p.position.y = Math.sin(t + i) * radius * 0.3;
+      });
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addDimensionalRift(planet: Mesh, radius: number, planetId: string): void {
+    const rift = MeshBuilder.CreateTorus('custom_dim_rift_' + planetId,
+      {diameter: radius*3.5, thickness: radius*0.6, tessellation: 32}, this.scene);
+    rift.parent = planet; rift.position = Vector3.Zero(); rift.isPickable = false;
+    const mat = new StandardMaterial('custom_dim_riftMat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(0.5, 0.1, 1); mat.alpha = 0.45; mat.backFaceCulling = false;
+    rift.material = mat;
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(rift);
+    let t = 0;
+    const cb = () => {
+      if (rift.isDisposed()) return;
+      t += 0.02;
+      rift.rotation.x += 0.007; rift.rotation.y += 0.009; rift.rotation.z += 0.005;
+      const mat2 = rift.material as StandardMaterial;
+      if (mat2) {
+        mat2.emissiveColor.set(0.3+0.3*Math.sin(t), 0.05+0.1*Math.sin(t*0.7), 0.7+0.3*Math.cos(t*0.5));
+        mat2.alpha = 0.3 + 0.2 * Math.abs(Math.sin(t));
+      }
+    };
+    this.trackCustomizationCallback(planetId, cb);
+  }
+  private addHeartbeatPulse(planet: Mesh, radius: number, planetId: string): void {
+    const sphere = MeshBuilder.CreateSphere('custom_heartbeat_' + planetId, {diameter: radius * 2 * 1.4, segments: 16}, this.scene);
+    sphere.parent = planet; sphere.position = Vector3.Zero(); sphere.isPickable = false;
+    const mat = new StandardMaterial('custom_heartbeatMat_' + planetId, this.scene);
+    mat.emissiveColor = new Color3(1, 0.2, 0.4); mat.alpha = 0.15; mat.backFaceCulling = false;
+    sphere.material = mat;
+    if (this.glowLayer) this.glowLayer.addIncludedOnlyMesh(sphere);
+    let t = 0;
+    const cb = () => {
+      if (sphere.isDisposed()) return;
+      t += 0.05;
+      const beat = Math.sin(t * 3) * 0.5 + Math.sin(t * 6) * 0.25;
+      const s = 1 + Math.max(0, beat) * 0.3;
+      sphere.scaling.setAll(s);
+      mat.alpha = 0.1 + Math.max(0, beat) * 0.2;
     };
     this.trackCustomizationCallback(planetId, cb);
   }
@@ -4252,5 +5430,10 @@ export class PlanetScene {
     // Dispose Babylon.js resources
     this.scene.dispose();
     this.engine.dispose();
+
+    if (this.authUnsubscribe) {
+      this.authUnsubscribe();
+      this.authUnsubscribe = null;
+    }
   }
 }

@@ -1,3 +1,49 @@
+<!-- Auth Modal -->
+<div id="authModal" class="modal auth-modal" style="display: none;">
+  <div class="modal-content auth-modal-content">
+    <span class="close" id="authModalClose">&times;</span>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="loginTab">🔑 Login</button>
+      <button class="auth-tab" id="registerTab">🌟 Register</button>
+    </div>
+    <form id="loginForm" class="auth-form">
+      <h2>Welcome Back ✨</h2>
+      <p class="auth-subtitle">Sign in to customize your cosmic worlds</p>
+      <div class="auth-field">
+        <label>📧 Email</label>
+        <input type="email" id="loginEmail" placeholder="Enter your email..." required>
+      </div>
+      <div class="auth-field">
+        <label>🔒 Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter your password..." required>
+      </div>
+      <div id="loginError" class="auth-error" style="display:none"></div>
+      <button type="submit" class="auth-submit">🚀 Sign In</button>
+    </form>
+    <form id="registerForm" class="auth-form" style="display:none">
+      <h2>Join the Cosmos 🌌</h2>
+      <p class="auth-subtitle">Create an account to claim and name your planets</p>
+      <div class="auth-field">
+        <label>📧 Email</label>
+        <input type="email" id="registerEmail" placeholder="Enter your email..." required>
+      </div>
+      <div class="auth-field">
+        <label>🔒 Password</label>
+        <input type="password" id="registerPassword" placeholder="Create a password (6+ chars)..." required>
+      </div>
+      <div id="registerError" class="auth-error" style="display:none"></div>
+      <button type="submit" class="auth-submit">✨ Create Account</button>
+    </form>
+  </div>
+</div>
+
+<!-- Auth Status Indicator -->
+<div id="authStatus" class="auth-status">
+  <span id="authUserDisplay">👤 Not logged in</span>
+  <button id="authSignOutBtn" style="display:none" class="auth-signout-btn">Sign Out</button>
+  <button id="authSignInBtn" class="auth-signin-btn">🔑 Sign In</button>
+</div>
+
 <div class="planets-container">
   <canvas id="planetsCanvas"></canvas>
   
@@ -22,6 +68,11 @@
     <div class="modal-content">
       <span class="close">&times;</span>
       <h2>✨ Edit Planet ✨</h2>
+      <div id="streakDisplay" class="streak-display" style="display:none">
+        <span class="streak-icon">🔥</span>
+        <span id="streakDays">0</span> day streak ·
+        <span id="customSlots">2</span> customization slots available
+      </div>
       <p style="text-align: center; color: #8a7fff; margin-top: -5px; margin-bottom: 25px; font-size: 14px; font-style: italic;">Customize your cosmic world</p>
       <form id="planetForm">
         <div>
@@ -36,88 +87,210 @@
 
         <div style="margin-top: 20px; padding: 15px; background: rgba(138, 127, 255, 0.1); border-radius: 8px; border: 1px solid rgba(138, 127, 255, 0.3);">
           <div class="custom-cards-label">🎨 Planet Customizations</div>
-          <div class="custom-cards-grid">
+          <div class="custom-cards-scroll">
+            <div class="custom-cards-grid">
 
-            <div class="custom-card">
-              <input type="checkbox" id="custom_cosmic_rings">
-              <label for="custom_cosmic_rings">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">🪐</span>
-                <span class="custom-card-name">Cosmic Rings</span>
-                <span class="custom-card-desc">Vibrant multicolor rings shimmer around your world</span>
-              </label>
+              <div class="custom-card">
+                <input type="checkbox" id="custom_cosmic_rings">
+                <label for="custom_cosmic_rings">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🪐</span>
+                  <span class="custom-card-name">Cosmic Rings</span>
+                  <span class="custom-card-desc">Vibrant multicolor rings shimmer around your world</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_star_aura">
+                <label for="custom_star_aura">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">⭐</span>
+                  <span class="custom-card-name">Star Aura</span>
+                  <span class="custom-card-desc">A pulsing stellar corona glows around the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_moon_companion">
+                <label for="custom_moon_companion">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🌙</span>
+                  <span class="custom-card-name">Moon Companion</span>
+                  <span class="custom-card-desc">A faithful moon sphere orbits your planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_crystal_shield">
+                <label for="custom_crystal_shield">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🔮</span>
+                  <span class="custom-card-name">Crystal Shield</span>
+                  <span class="custom-card-desc">A glowing crystalline energy barrier pulses around the world</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_nebula_cloud">
+                <label for="custom_nebula_cloud">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🌌</span>
+                  <span class="custom-card-name">Nebula Cloud</span>
+                  <span class="custom-card-desc">Swirling cosmic nebula particles engulf the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_comet_streaks">
+                <label for="custom_comet_streaks">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">☄️</span>
+                  <span class="custom-card-name">Comet Streaks</span>
+                  <span class="custom-card-desc">Glowing micro-comets race in brilliant arcs</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_sparkle_orbit">
+                <label for="custom_sparkle_orbit">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">✨</span>
+                  <span class="custom-card-name">Sparkle Orbit</span>
+                  <span class="custom-card-desc">Magical star sparkles dance around the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_aurora_glow">
+                <label for="custom_aurora_glow">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🌈</span>
+                  <span class="custom-card-name">Aurora Glow</span>
+                  <span class="custom-card-desc">A mesmerizing multicolor aurora wraps the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_stardust_rain">
+                <label for="custom_stardust_rain">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">💫</span>
+                  <span class="custom-card-name">Stardust Rain</span>
+                  <span class="custom-card-desc">A gentle shower of shimmering star particles falls constantly</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_phoenix_sparks">
+                <label for="custom_phoenix_sparks">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🔴</span>
+                  <span class="custom-card-name">Phoenix Sparks</span>
+                  <span class="custom-card-desc">Brilliant red-gold sparks burst like a reborn phoenix</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_solar_wind">
+                <label for="custom_solar_wind">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">☀️</span>
+                  <span class="custom-card-name">Solar Wind</span>
+                  <span class="custom-card-desc">Streaming solar wind particles blast past the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_plasma_sparks">
+                <label for="custom_plasma_sparks">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">⚡</span>
+                  <span class="custom-card-name">Plasma Sparks</span>
+                  <span class="custom-card-desc">Electric plasma sparks discharge in vivid bursts</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_dark_matter_shell">
+                <label for="custom_dark_matter_shell">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🌑</span>
+                  <span class="custom-card-name">Dark Matter Shell</span>
+                  <span class="custom-card-desc">Mysterious dark energy warps the space around the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_flame_shell">
+                <label for="custom_flame_shell">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🔥</span>
+                  <span class="custom-card-name">Flame Shell</span>
+                  <span class="custom-card-desc">A shell of living fire blazes in intense orange and red</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_ice_shell">
+                <label for="custom_ice_shell">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🧊</span>
+                  <span class="custom-card-name">Ice Shell</span>
+                  <span class="custom-card-desc">A crystalline shell of ice freezes the space around the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_golden_divine">
+                <label for="custom_golden_divine">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🌟</span>
+                  <span class="custom-card-name">Golden Divine</span>
+                  <span class="custom-card-desc">A divine golden light radiates ancient celestial power</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_rainbow_rings">
+                <label for="custom_rainbow_rings">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">🌈</span>
+                  <span class="custom-card-name">Rainbow Rings</span>
+                  <span class="custom-card-desc">Prismatic torus rings rotate in every color of the spectrum</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_atomic_rings">
+                <label for="custom_atomic_rings">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">⚛️</span>
+                  <span class="custom-card-name">Atomic Rings</span>
+                  <span class="custom-card-desc">Three atomic orbital rings spin on XYZ axes</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_supernova_pulse">
+                <label for="custom_supernova_pulse">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">💥</span>
+                  <span class="custom-card-name">Supernova Pulse</span>
+                  <span class="custom-card-desc">Periodic supernova shockwaves expand from the planet</span>
+                </label>
+              </div>
+
+              <div class="custom-card">
+                <input type="checkbox" id="custom_gem_orbit">
+                <label for="custom_gem_orbit">
+                  <span class="custom-card-badge">✓</span>
+                  <span class="custom-card-icon">💎</span>
+                  <span class="custom-card-name">Gem Orbit</span>
+                  <span class="custom-card-desc">Faceted diamond-shaped gemstones orbit in a sparkling constellation</span>
+                </label>
+              </div>
+
             </div>
-
-            <div class="custom-card">
-              <input type="checkbox" id="custom_star_aura">
-              <label for="custom_star_aura">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">⭐</span>
-                <span class="custom-card-name">Star Aura</span>
-                <span class="custom-card-desc">A pulsing stellar corona glows around the planet</span>
-              </label>
-            </div>
-
-            <div class="custom-card">
-              <input type="checkbox" id="custom_moon_companion">
-              <label for="custom_moon_companion">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">🌙</span>
-                <span class="custom-card-name">Moon Companion</span>
-                <span class="custom-card-desc">A cute moon faithfully orbits your planet</span>
-              </label>
-            </div>
-
-            <div class="custom-card">
-              <input type="checkbox" id="custom_crystal_shield">
-              <label for="custom_crystal_shield">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">🔮</span>
-                <span class="custom-card-name">Crystal Shield</span>
-                <span class="custom-card-desc">A glowing crystalline energy barrier pulses around the world</span>
-              </label>
-            </div>
-
-            <div class="custom-card">
-              <input type="checkbox" id="custom_nebula_cloud">
-              <label for="custom_nebula_cloud">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">🌌</span>
-                <span class="custom-card-name">Nebula Cloud</span>
-                <span class="custom-card-desc">Swirling cosmic nebula particles engulf the planet</span>
-              </label>
-            </div>
-
-            <div class="custom-card">
-              <input type="checkbox" id="custom_comet_streaks">
-              <label for="custom_comet_streaks">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">☄️</span>
-                <span class="custom-card-name">Comet Streaks</span>
-                <span class="custom-card-desc">Glowing micro-comets race in brilliant arcs</span>
-              </label>
-            </div>
-
-            <div class="custom-card">
-              <input type="checkbox" id="custom_sparkle_orbit">
-              <label for="custom_sparkle_orbit">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">✨</span>
-                <span class="custom-card-name">Sparkle Orbit</span>
-                <span class="custom-card-desc">Magical star sparkles dance around the planet</span>
-              </label>
-            </div>
-
-            <div class="custom-card">
-              <input type="checkbox" id="custom_aurora_glow">
-              <label for="custom_aurora_glow">
-                <span class="custom-card-badge">✓</span>
-                <span class="custom-card-icon">🌈</span>
-                <span class="custom-card-name">Aurora Glow</span>
-                <span class="custom-card-desc">A mesmerizing multicolor aurora wraps the planet</span>
-              </label>
-            </div>
-
           </div>
         </div>
         
