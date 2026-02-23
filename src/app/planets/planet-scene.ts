@@ -26,8 +26,6 @@ import {
   PointerEventTypes,
   PBRSubSurfaceConfiguration,
   DefaultRenderingPipeline,
-  LensFlareSystem,
-  LensFlare,
 } from '@babylonjs/core';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
@@ -406,7 +404,6 @@ export class PlanetScene {
     }
 
     this.createSunCorona();
-    this.createSunLensFlares();
   }
 
   private drawSunSurface(texture: DynamicTexture, t: number): void {
@@ -483,45 +480,6 @@ export class PlanetScene {
     corona.color2 = new Color4(1, 0.75, 0.3, 0.6);
     corona.colorDead = new Color4(1, 0.5, 0.1, 0);
     corona.start();
-  }
-
-  private createSunLensFlares(): void {
-    if (!this.sun) return;
-    try {
-      const lensFlareSystem = new LensFlareSystem('sunFlares', this.sun, this.scene);
-
-      // Generate a star-burst flare image as a data URL
-      const flareCanvas = document.createElement('canvas');
-      flareCanvas.width = 256; flareCanvas.height = 256;
-      const fc = flareCanvas.getContext('2d')!;
-      const fg = fc.createRadialGradient(128, 128, 0, 128, 128, 128);
-      fg.addColorStop(0,    'rgba(255,255,220,1)');
-      fg.addColorStop(0.08, 'rgba(255,240,140,0.9)');
-      fg.addColorStop(0.25, 'rgba(255,200,80,0.55)');
-      fg.addColorStop(0.6,  'rgba(255,150,40,0.2)');
-      fg.addColorStop(1,    'rgba(255,80,0,0)');
-      fc.fillStyle = fg;
-      fc.fillRect(0, 0, 256, 256);
-      fc.strokeStyle = 'rgba(255,240,180,0.35)';
-      fc.lineWidth = 2;
-      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
-        fc.beginPath();
-        fc.moveTo(128, 128);
-        fc.lineTo(128 + Math.cos(angle) * 128, 128 + Math.sin(angle) * 128);
-        fc.stroke();
-      }
-      const flareUrl = flareCanvas.toDataURL('image/png');
-
-      LensFlare.AddFlare(1.2,  0.0,  new Color3(1,    0.97, 0.7),  flareUrl, lensFlareSystem);
-      LensFlare.AddFlare(0.5,  0.15, new Color3(0.9,  0.85, 1.0),  flareUrl, lensFlareSystem);
-      LensFlare.AddFlare(0.25, 0.35, new Color3(0.7,  0.7,  1.0),  flareUrl, lensFlareSystem);
-      LensFlare.AddFlare(0.15, 0.55, new Color3(1,    0.9,  0.5),  flareUrl, lensFlareSystem);
-      LensFlare.AddFlare(0.35, 0.75, new Color3(0.8,  0.6,  1.0),  flareUrl, lensFlareSystem);
-      LensFlare.AddFlare(0.12, 0.9,  new Color3(0.6,  0.8,  1.0),  flareUrl, lensFlareSystem);
-      LensFlare.AddFlare(0.28, 1.0,  new Color3(1,    0.98, 0.9),  flareUrl, lensFlareSystem);
-    } catch (_e) {
-      // LensFlare optional
-    }
   }
 
   private setupPostProcessing(): void {
