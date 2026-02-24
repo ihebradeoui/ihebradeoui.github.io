@@ -25,6 +25,7 @@ import {
   AbstractMesh,
   PointerEventTypes,
   PBRSubSurfaceConfiguration,
+  DefaultRenderingPipeline,
 } from '@babylonjs/core';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
@@ -114,6 +115,7 @@ export class PlanetScene {
   private followingPlanet: Mesh | null = null;
   private cameraPresetUI: HTMLDivElement | null = null;
   private keyboardHandler: ((event: KeyboardEvent) => void) | null = null;
+  private modalObservers: MutationObserver[] = [];
   private cameraControlsAttached: boolean = false; // Track camera control state
   private galaxies: GalaxyData[] = [];
   private currentGalaxyIndex: number = 0;
@@ -141,6 +143,8 @@ export class PlanetScene {
   private moonMeshes: Map<string, { mesh: Mesh; angle: number; orbitRadius: number }> = new Map();
   private currentUser: User | null = null;
   private authUnsubscribe: (() => void) | null = null;
+  private planetTooltip: HTMLDivElement | null = null;
+  private sunUpdateInterval: number | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -184,6 +188,9 @@ export class PlanetScene {
     this.setupKeyboardControls();
     this.setupCameraPresetUI();
 
+    // Setup planet hover tooltip
+    this.createPlanetTooltip();
+
     // Setup auth modal
     this.setupAuthModal();
     // Listen to auth state
@@ -217,31 +224,32 @@ export class PlanetScene {
     this.camera.wheelPrecision = 20;
     this.camera.panningSensibility = 0;
 
-    // Create enhanced glow layer for premium luminous effects
+    // Glow layer — lightweight, small kernel so it doesn't bleed across the screen
     this.glowLayer = new GlowLayer('glow', scene, {
-      mainTextureFixedSize: 512,
-      blurKernelSize: 64,
+      mainTextureFixedSize: 256,
+      blurKernelSize: 32,
     });
-    this.glowLayer.intensity = 0.8;
+    this.glowLayer.intensity = 0.4;
 
     // Create sun at center
     this.createSun();
 
-    // Main light source from the sun
+    // Main light source from the sun — intense and warm
     const sunLight = new PointLight('sunLight', Vector3.Zero(), scene);
-    sunLight.intensity = 2.0;
-    sunLight.range = 500;
-    sunLight.diffuse = new Color3(1.0, 0.95, 0.8);
-    sunLight.specular = new Color3(1.0, 0.95, 0.8);
+    sunLight.intensity = 3.5;
+    sunLight.range = 600;
+    sunLight.diffuse = new Color3(1.0, 0.96, 0.82);
+    sunLight.specular = new Color3(1.0, 0.96, 0.82);
 
-    // Subtle ambient light for visibility
+    // Secondary fill light — very dim, cold, simulates deep-space starlight
     const ambientLight = new HemisphericLight(
       'ambientLight',
       new Vector3(0, 1, 0),
       scene,
     );
-    ambientLight.intensity = 0.15;
-    ambientLight.diffuse = new Color3(0.2, 0.2, 0.3);
+    ambientLight.intensity = 0.08;
+    ambientLight.diffuse = new Color3(0.1, 0.12, 0.2);
+    ambientLight.groundColor = new Color3(0.02, 0.02, 0.05);
 
     // Enhanced space skybox
     this.createSpaceSkybox(scene);
@@ -251,6 +259,9 @@ export class PlanetScene {
 
     // Create nebula effect
     this.createNebula();
+
+    // Setup cinematic post-processing pipeline
+    this.setupPostProcessing();
 
     // Load initial galaxy (Solar System) without animation
     this.switchGalaxy(0, false);
@@ -284,10 +295,10 @@ export class PlanetScene {
     // Single animation callback for all scene animations
     this.scene.registerBeforeRender(() => {
       time += 0.01; // Increment time for smooth animations
-      
-      // Rotate sun slowly for cozy feel
+
+      // Rotate sun slowly
       if (this.sun) {
-        this.sun.rotation.y += 0.0002; // Reduced from 0.001 for calmer atmosphere
+        this.sun.rotation.y += 0.00025;
       }
 
       // Update all planet orbits and rotations
@@ -337,7 +348,6 @@ export class PlanetScene {
         const driftAmplitude = 0.15; // Small drift amplitude
         const driftX = Math.sin(time * 0.3) * driftAmplitude;
         const driftY = Math.cos(time * 0.2) * driftAmplitude * 0.5; // Less vertical drift
-        const driftZ = Math.sin(time * 0.25) * driftAmplitude;
         
         // Apply drift to camera alpha and beta (orbital angles)
         // This creates a gentle wobble effect
@@ -360,224 +370,213 @@ export class PlanetScene {
   }
 
   private createSun(): void {
-    // Create the sun sphere with ultra high detail for premium quality
+    // Sun sphere — reasonable detail, not over-large
     this.sun = MeshBuilder.CreateSphere(
-      "sun",
-      { diameter: 8, segments: 256 }, // Increased to 256 for ultra smooth appearance
-      this.scene
+      'sun',
+      { diameter: 8, segments: 64 },
+      this.scene,
     );
     this.sun.position = Vector3.Zero();
 
-    // Create glowing sun material with enhanced PBR properties
-    const sunMaterial = new PBRMaterial("sunMaterial", this.scene);
-    sunMaterial.emissiveColor = new Color3(1.2, 0.9, 0.4);
-    sunMaterial.emissiveIntensity = 1.5;
-    sunMaterial.albedoColor = new Color3(1.0, 0.95, 0.5);
-    
-    // Create procedural texture for sun surface with more detail
-    const sunTexture = new DynamicTexture("sunTexture", 1024, this.scene, false);
-    const ctx = sunTexture.getContext();
-    
-    // Draw sun surface with enhanced gradient
-    const gradient = ctx.createRadialGradient(512, 512, 0, 512, 512, 512);
-    gradient.addColorStop(0, '#FFEB3B');
-    gradient.addColorStop(0.3, '#FFD700');
-    gradient.addColorStop(0.6, '#FFA500');
-    gradient.addColorStop(0.85, '#FF8C00');
-    gradient.addColorStop(1, '#FF6B00');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 1024, 1024);
-    
-    // Add more detailed darker spots (sunspots) for realism
-    for (let i = 0; i < 40; i++) {
-      const x = Math.random() * 1024;
-      const y = Math.random() * 1024;
-      const size = Math.random() * 50 + 15;
-      ctx.fillStyle = `rgba(180, 80, 0, ${Math.random() * 0.4 + 0.1})`;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    
-    // Add bright flares for more dynamic look
-    for (let i = 0; i < 15; i++) {
-      const x = Math.random() * 1024;
-      const y = Math.random() * 1024;
-      const size = Math.random() * 40 + 10;
-      ctx.fillStyle = `rgba(255, 255, 200, ${Math.random() * 0.3})`;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    const sunMaterial = new PBRMaterial('sunMaterial', this.scene);
 
-    sunTexture.update();
-    sunMaterial.emissiveTexture = sunTexture;
-    
-    // Enhanced lighting properties
-    sunMaterial.roughness = 0.2;
+    // Emissive values ≤ 1.0 so bloom doesn't blow out and sun shrinks with zoom
+    sunMaterial.emissiveColor = new Color3(1.0, 0.82, 0.25);
+    sunMaterial.emissiveIntensity = 0.9;
+    sunMaterial.albedoColor = new Color3(1.0, 0.6, 0.1);
     sunMaterial.metallic = 0.0;
-    
+    sunMaterial.roughness = 0.9;
+
+    // Draw sun surface once at startup (baked texture — no per-frame update)
+    const sunTexture = new DynamicTexture('sunTexture', 512, this.scene, false);
+    this.drawSunSurface(sunTexture, 0);
+    sunMaterial.emissiveTexture = sunTexture;
     this.sun.material = sunMaterial;
 
-    // Add sun to glow layer with stronger glow
+    // Slow animated update: redraw at ~1 fps to save GPU/CPU
+    let sunTime = 0;
+    this.sunUpdateInterval = window.setInterval(() => {
+      sunTime += 0.3;
+      this.drawSunSurface(sunTexture, sunTime);
+    }, 1000);
+
     if (this.glowLayer) {
       this.glowLayer.addIncludedOnlyMesh(this.sun);
-      this.glowLayer.intensity = 1.2;
     }
 
-    // Create corona particle effect around sun
     this.createSunCorona();
+  }
 
-    // Note: Sun rotation is handled in the unified animation loop
+  private drawSunSurface(texture: DynamicTexture, t: number): void {
+    const ctx = texture.getContext() as CanvasRenderingContext2D;
+    const S = 512;
+
+    // Chromosphere gradient
+    const bg = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    bg.addColorStop(0,    '#FFE066');
+    bg.addColorStop(0.3,  '#FFB800');
+    bg.addColorStop(0.6,  '#FF7200');
+    bg.addColorStop(0.85, '#CC3800');
+    bg.addColorStop(1,    '#881800');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, S, S);
+
+    // Convection cells — reduced count for performance
+    for (let i = 0; i < 60; i++) {
+      const seed = i * 137.508;
+      const cx = (Math.sin(seed) * 0.5 + 0.5) * S;
+      const cy = (Math.cos(seed * 0.7) * 0.5 + 0.5) * S;
+      const r  = 10 + (i % 7) * 5;
+      const brightness = 0.55 + Math.sin(t * 0.4 + i) * 0.25;
+      const gg = Math.floor(220 * brightness);
+      const bb = Math.floor(60  * brightness);
+      const cellG = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      cellG.addColorStop(0,   `rgba(255,${gg},${bb},0.55)`);
+      cellG.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.fillStyle = cellG;
+      ctx.fillRect(0, 0, S, S);
+    }
+
+    // Sunspots — reduced count
+    for (let i = 0; i < 8; i++) {
+      const seed = i * 317.4;
+      const sx = (Math.sin(seed * 1.3) * 0.4 + 0.5) * S;
+      const sy = (Math.cos(seed * 0.9) * 0.4 + 0.5) * S;
+      const sr = 10 + (i % 4) * 8;
+      const umbG = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+      umbG.addColorStop(0,   'rgba(30,8,0,0.88)');
+      umbG.addColorStop(0.6, 'rgba(70,20,0,0.5)');
+      umbG.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.fillStyle = umbG;
+      ctx.fillRect(0, 0, S, S);
+    }
+
+    texture.update();
   }
 
   private createSunCorona(): void {
-    const coronaSystem = new ParticleSystem("sunCorona", 800, this.scene);
-    coronaSystem.emitter = Vector3.Zero();
-    
-    // Sphere emitter with larger radius
-    const sphereEmitter = new SphereParticleEmitter(6);
-    coronaSystem.particleEmitterType = sphereEmitter;
-    
-    // Create enhanced particle texture with better glow
-    const coronaTexture = new DynamicTexture("coronaTexture", 128, this.scene, false);
-    const ctx = coronaTexture.getContext();
-    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gradient.addColorStop(0, 'rgba(255, 240, 150, 1)');
-    gradient.addColorStop(0.3, 'rgba(255, 200, 100, 0.7)');
-    gradient.addColorStop(0.6, 'rgba(255, 150, 50, 0.4)');
-    gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 128, 128);
-    coronaTexture.update();
+    // Single merged corona — efficient, still visually rich
+    const corona = new ParticleSystem('sunCorona', 300, this.scene);
+    corona.emitter = Vector3.Zero();
+    corona.particleEmitterType = new SphereParticleEmitter(4.5);
 
-    coronaSystem.particleTexture = coronaTexture;
-    coronaSystem.minSize = 0.8;
-    coronaSystem.maxSize = 3.0;
-    coronaSystem.minLifeTime = 2;
-    coronaSystem.maxLifeTime = 5;
-    coronaSystem.emitRate = 150;
-    coronaSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
-    coronaSystem.minEmitPower = 0.5;
-    coronaSystem.maxEmitPower = 1.5;
-    coronaSystem.updateSpeed = 0.02;
-    
-    coronaSystem.color1 = new Color4(1, 0.95, 0.6, 1);
-    coronaSystem.color2 = new Color4(1, 0.8, 0.4, 1);
-    coronaSystem.colorDead = new Color4(1, 0.6, 0.2, 0);
-    
-    coronaSystem.start();
+    const coronaTex = new DynamicTexture('coronaTex', 64, this.scene, false);
+    const cc = coronaTex.getContext() as CanvasRenderingContext2D;
+    const cg = cc.createRadialGradient(32, 32, 0, 32, 32, 32);
+    cg.addColorStop(0,   'rgba(255,250,180,1)');
+    cg.addColorStop(0.3, 'rgba(255,200,80,0.7)');
+    cg.addColorStop(0.7, 'rgba(255,130,30,0.3)');
+    cg.addColorStop(1,   'rgba(255,80,0,0)');
+    cc.fillStyle = cg; cc.fillRect(0, 0, 64, 64);
+    coronaTex.update();
+
+    corona.particleTexture = coronaTex;
+    corona.minSize = 0.5; corona.maxSize = 2.5;
+    corona.minLifeTime = 2; corona.maxLifeTime = 6;
+    corona.emitRate = 60;
+    corona.blendMode = ParticleSystem.BLENDMODE_ADD;
+    corona.minEmitPower = 0.5; corona.maxEmitPower = 2.5;
+    corona.updateSpeed = 0.02;
+    corona.color1 = new Color4(1, 0.95, 0.65, 0.9);
+    corona.color2 = new Color4(1, 0.75, 0.3, 0.6);
+    corona.colorDead = new Color4(1, 0.5, 0.1, 0);
+    corona.start();
+  }
+
+  private setupPostProcessing(): void {
+    try {
+      const pipeline = new DefaultRenderingPipeline(
+        'cinematicPipeline',
+        false, // no HDR — HDR mode was causing the sun glow to blow out
+        this.scene,
+        [this.camera],
+      );
+
+      // FXAA anti-aliasing — crisp edges, no blurring
+      pipeline.fxaaEnabled = true;
+      pipeline.samples = 4;
+
+      // Subtle bloom — only the brightest emissive areas (the sun) should glow
+      pipeline.bloomEnabled = true;
+      pipeline.bloomThreshold = 0.75; // only very bright pixels
+      pipeline.bloomWeight    = 0.25; // gentle, not screen-filling
+      pipeline.bloomKernel    = 64;
+      pipeline.bloomScale     = 0.5;
+
+      // Light vignette for cinematic framing — no blur induced
+      pipeline.imageProcessingEnabled = true;
+      pipeline.imageProcessing.vignetteEnabled   = true;
+      pipeline.imageProcessing.vignetteWeight    = 2.5;
+      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 0);
+      pipeline.imageProcessing.vignetteBlendMode = 1;
+      pipeline.imageProcessing.contrast  = 1.15;
+      pipeline.imageProcessing.exposure  = 1.0;
+
+      // NO depth of field — it makes everything blurry
+      // NO chromatic aberration — it makes edges look wrong and blurry
+      // NO grain — adds noise that reads as blur
+    } catch (_e) {
+      // Post-processing unavailable in this environment
+    }
   }
 
   private createSpaceSkybox(scene: Scene): void {
-    // Create a much larger skybox for deep space feel
+    // Deep-space black skybox — stars rendered via particles for full 3-D depth
     const skybox = MeshBuilder.CreateBox('skybox', { size: 2000 }, scene);
     const skyboxMaterial = new StandardMaterial('skyboxMaterial', scene);
-
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.disableLighting = true;
-
-    // Use solid black for the skybox - stars will be rendered via particle system
-    // This is the most reliable approach that works consistently
-    skyboxMaterial.emissiveColor = new Color3(0, 0, 0); // Pure black
-    skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
+    skyboxMaterial.emissiveColor = new Color3(0, 0, 0);
+    skyboxMaterial.diffuseColor  = new Color3(0, 0, 0);
     skyboxMaterial.specularColor = new Color3(0, 0, 0);
 
-    // Try to use the environment texture if available for reflections on planets
+    // Attempt HDR environment for PBR reflections
     try {
       const envTex = CubeTexture.CreateFromPrefilteredData(
-        '/assets/pbr/environment.env',
-        scene,
+        '/assets/pbr/environment.env', scene,
       );
       scene.environmentTexture = envTex;
-      scene.environmentIntensity = 0.3; // Subtle environmental lighting
-    } catch (e) {
-      // Environment texture not available, that's ok
-    }
+      scene.environmentIntensity = 0.25;
+    } catch (_e) { /* no env texture available */ }
 
     skybox.material = skyboxMaterial;
     skybox.infiniteDistance = true;
-    skybox.isPickable = false; // Critical: Don't block planet picking!
+    skybox.isPickable = false;
   }
 
   private createStarField(): void {
-    // Star field spatial constants
-    const STAR_FIELD_MIN_PARTICLES = 500;
-    const STAR_FIELD_MAX_PARTICLES = 5000;
-    const STAR_FIELD_WIDTH = 500;
-    const STAR_FIELD_HEIGHT = 500;
-    
-    // Star movement constants (based on fall speed slider 0-100)
-    // Fall speed 0 = no movement, Fall speed 100 = maximum movement
-    const speedMultiplier = this.starFallSpeed / 50; // 0-2x multiplier
-    const STAR_MIN_VELOCITY = -2 * speedMultiplier;
-    const STAR_MAX_VELOCITY = -4 * speedMultiplier;
-    const STAR_GRAVITY = -0.5 * speedMultiplier;
-    
-    // Create particle system for distant stars with movement
-    // Calculate particle count based on density (0-100 maps to 500-5000 particles)
-    const particleCount = Math.floor(STAR_FIELD_MIN_PARTICLES + (this.starDensity / 100) * (STAR_FIELD_MAX_PARTICLES - STAR_FIELD_MIN_PARTICLES));
-    const particleSystem = new ParticleSystem("stars", particleCount, this.scene);
-    
-    // Store reference for dynamic updates
-    this.starFieldParticleSystem = particleSystem;
-    
-    // Create a simple emitter point
-    particleSystem.emitter = Vector3.Zero();
-    // Distribute particles in all directions around the galaxy (not just from top)
-    particleSystem.minEmitBox = new Vector3(-STAR_FIELD_WIDTH, -STAR_FIELD_HEIGHT, -STAR_FIELD_WIDTH);
-    particleSystem.maxEmitBox = new Vector3(STAR_FIELD_WIDTH, STAR_FIELD_HEIGHT, STAR_FIELD_WIDTH);
+    const W = 600;
 
-    // Create an enhanced star texture with glow
-    const starTexture = new DynamicTexture("starTexture", { width: 64, height: 64 }, this.scene, false);
-    const context = starTexture.getContext();
-    const centerX = 32;
-    const centerY = 32;
-    const radius = 24;
-    
-    // Draw a radial gradient for the star with stronger glow
-    const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
-    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.4)');
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    // Single efficient star system — 2 size variants using same texture
+    const starTex = new DynamicTexture('starTex', 64, this.scene, false);
+    const stCtx = starTex.getContext() as CanvasRenderingContext2D;
+    const stG = stCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    stG.addColorStop(0,    'rgba(255,255,255,1)');
+    stG.addColorStop(0.2,  'rgba(220,228,255,0.9)');
+    stG.addColorStop(0.5,  'rgba(180,195,255,0.45)');
+    stG.addColorStop(0.85, 'rgba(140,160,255,0.12)');
+    stG.addColorStop(1,    'rgba(0,0,0,0)');
+    stCtx.fillStyle = stG; stCtx.fillRect(0, 0, 64, 64);
+    starTex.update();
 
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 64, 64);
-    starTexture.update();
+    // Main star field — 2500 particles, permanent, no movement
+    const stars = new ParticleSystem('stars', 2500, this.scene);
+    stars.emitter = Vector3.Zero();
+    stars.minEmitBox = new Vector3(-W, -W, -W);
+    stars.maxEmitBox = new Vector3(W, W, W);
+    stars.particleTexture = starTex;
+    stars.minSize = 0.1; stars.maxSize = 1.2;
+    stars.minLifeTime = 9999; stars.maxLifeTime = 9999;
+    stars.emitRate = 2500;
+    stars.blendMode = ParticleSystem.BLENDMODE_ADD;
+    stars.minEmitPower = 0; stars.maxEmitPower = 0;
+    stars.color1 = new Color4(0.9, 0.92, 1.0, 0.8);
+    stars.color2 = new Color4(1.0, 0.95, 0.82, 0.65);
+    stars.colorDead = new Color4(1, 1, 1, 0);
+    stars.gravity = Vector3.Zero();
+    stars.start();
 
-    particleSystem.particleTexture = starTexture;
-    particleSystem.minSize = 0.5;
-    particleSystem.maxSize = 2.5;
-    
-    // Enhanced color range - white to various tints (blue, yellow, red for variety)
-    particleSystem.color1 = new Color3(1, 1, 1).toColor4();
-    particleSystem.color2 = new Color3(0.9, 0.9, 1.0).toColor4();
-    particleSystem.colorDead = new Color3(0.8, 0.8, 0.9).toColor4();
-
-    // Lifetime - longer lifetime since particles are distributed throughout space
-    particleSystem.minLifeTime = 100;
-    particleSystem.maxLifeTime = 150;
-
-    // Emission rate - lower since we want a stable field, not continuous spawning
-    particleSystem.emitRate = particleCount / 20;
-    particleSystem.updateSpeed = 0.02;
-
-    // Add downward velocity to simulate upward movement through space
-    particleSystem.direction1 = new Vector3(0, STAR_MIN_VELOCITY, 0);
-    particleSystem.direction2 = new Vector3(0, STAR_MAX_VELOCITY, 0);
-    
-    // Add subtle horizontal drift for more natural movement
-    particleSystem.minEmitPower = 0.5;
-    particleSystem.maxEmitPower = 1.0;
-
-    particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
-
-    // Add gravity to maintain consistent downward motion
-    particleSystem.gravity = new Vector3(0, STAR_GRAVITY, 0);
-
-    // Start the particle system
-    particleSystem.start();
+    this.starFieldParticleSystem = stars;
   }
 
   private createMeteorSystem(): void {
@@ -761,58 +760,54 @@ export class PlanetScene {
     // Ensure planet is pickable
     planet.isPickable = true;
 
-    // Enhanced PBR Material for ultra-realistic appearance with dramatic improvements
-    // Material enhancement constants
-    const COLOR_VIBRANCE_MULTIPLIER = 1.2;
-    const BUMP_TEXTURE_LEVEL = 2.5;
-    const EMISSIVE_COLOR_SCALE = 0.15;
-    
+    // ── Cinematic PBR material — physically-based, photorealistic ──────────
     const material = new PBRMaterial(`mat_${id}`, this.scene);
 
-    // Create procedural texture for planet surface
+    // High-detail procedural surface texture
     const planetTexture = this.createPlanetTexture(data.name, data.color);
     material.albedoTexture = planetTexture;
-    
-    // Base color - enhanced vibrance with stronger saturation
-    material.albedoColor = Color3.FromHexString(data.color).scale(COLOR_VIBRANCE_MULTIPLIER);
-    
-    // Enhanced metallic and roughness for photorealistic surface
-    material.metallic = 0.03;
-    material.roughness = 0.75;
-    
-    // Add bump map for surface detail
+    material.albedoColor   = Color3.FromHexString(data.color).scale(1.05);
+
+    // Roughness/metallic tuned per planet type
+    const isGasGiant   = ['Jupiter','Saturn','Uranus','Neptune'].includes(data.name);
+    const isRocky      = ['Mercury','Mars','Moon'].includes(data.name);
+    const isIcy        = data.name === 'Uranus' || data.name.toLowerCase().includes('ice') || data.name.toLowerCase().includes('frost');
+    material.metallic  = isGasGiant ? 0.0 : isRocky ? 0.02 : 0.04;
+    material.roughness = isGasGiant ? 0.55 : isIcy ? 0.35 : isRocky ? 0.88 : 0.72;
+
+    // High-detail bump map — strong surface relief
     const bumpTexture = this.createBumpTexture();
-    material.bumpTexture = bumpTexture;
-    material.bumpTexture.level = BUMP_TEXTURE_LEVEL;
-    
-    // Enhanced emissive for stronger atmospheric glow effect
-    material.emissiveColor = Color3.FromHexString(data.color).scale(EMISSIVE_COLOR_SCALE);
-    material.emissiveIntensity = 1.3;
-    
-    // Enhanced specular highlights from sun for glossy appearance
-    material.specularIntensity = 0.8;
-    
-    // Enable advanced lighting effects with stronger intensity
-    material.directIntensity = 1.5;
-    material.environmentIntensity = 0.6;
-    material.microSurface = 0.9;
-    
-    // Add reflection for enhanced realism (only if environment texture exists)
+    material.bumpTexture       = bumpTexture;
+    material.bumpTexture.level = isGasGiant ? 1.2 : 3.5;
+
+    // Very subtle emissive — only atmospheric scatter, not glowing
+    material.emissiveColor     = Color3.FromHexString(data.color).scale(0.04);
+    material.emissiveIntensity = 0.8;
+
+    // Maximum PBR quality settings
+    material.specularIntensity    = isGasGiant ? 0.35 : 0.65;
+    material.directIntensity      = 1.8;
+    material.environmentIntensity = 0.35;
+    material.microSurface         = isGasGiant ? 0.96 : 0.88;
+
+    // Environment reflections
     if (this.scene.environmentTexture) {
-      material.reflectionTexture = this.scene.environmentTexture;
-      material.reflectivityColor = new Color3(0.1, 0.1, 0.1);
+      material.reflectionTexture  = this.scene.environmentTexture;
+      material.reflectivityColor  = new Color3(0.06, 0.06, 0.07);
     }
-    
-    // Ensure planet is fully opaque - no transparency
-    material.alpha = 1.0;
-    material.alphaMode = Engine.ALPHA_DISABLE;
+
+    // Fully opaque
+    material.alpha           = 1.0;
+    material.alphaMode       = Engine.ALPHA_DISABLE;
     material.transparencyMode = null;
-    
-    // Enable subsurface scattering for more planet types for realistic light transmission
-    if (data.name === "Earth" || data.name === "Mars" || data.name === "Venus" || data.name === "Jupiter") {
+
+    // Subsurface scattering for planets with thick atmospheres / ice
+    const sssEnabled = ['Earth','Venus','Jupiter','Uranus','Neptune'].includes(data.name)
+                    || isIcy;
+    if (sssEnabled) {
       material.subSurface.isTranslucencyEnabled = true;
-      material.subSurface.translucencyIntensity = 0.3;
-      material.subSurface.tintColor = Color3.FromHexString(data.color).scale(0.5);
+      material.subSurface.translucencyIntensity = isGasGiant ? 0.45 : 0.22;
+      material.subSurface.tintColor = Color3.FromHexString(data.color).scale(0.6);
     }
 
     planet.material = material;
@@ -862,12 +857,14 @@ export class PlanetScene {
       new ExecuteCodeAction(ActionManager.OnPointerOverTrigger, () => {
         this.playSound('hover');
         planet.scaling = new Vector3(1.05, 1.05, 1.05);
+        this.showPlanetTooltip(id);
       }),
     );
 
     planet.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnPointerOutTrigger, () => {
         planet.scaling = new Vector3(1, 1, 1);
+        this.hidePlanetTooltip();
       }),
     );
 
@@ -1433,26 +1430,23 @@ export class PlanetScene {
     scale: number,
     radius: number,
   ): void {
-    const atmosphere = MeshBuilder.CreateSphere(
+    // Single atmosphere layer — keeps draw calls low and avoids glow-layer bleed
+    const atmo = MeshBuilder.CreateSphere(
       `atmo_${planet.name}`,
       { diameter: radius * 2 * scale, segments: 32 },
       this.scene,
     );
-    atmosphere.parent = planet;
-    atmosphere.position = Vector3.Zero();
-    atmosphere.isPickable = false; // Don't block planet picking
+    atmo.parent = planet;
+    atmo.position = Vector3.Zero();
+    atmo.isPickable = false;
 
     const atmoMat = new StandardMaterial(`atmoMat_${planet.name}`, this.scene);
     atmoMat.diffuseColor = new Color3(0, 0, 0);
-    // Enhanced emissive for stronger glow
-    atmoMat.emissiveColor = color.scale(0.6);
-    atmoMat.alpha = 0.3;
+    atmoMat.emissiveColor = color.scale(0.55);
+    atmoMat.alpha = 0.18;
     atmoMat.backFaceCulling = false;
-    atmosphere.material = atmoMat;
-
-    if (this.glowLayer) {
-      this.glowLayer.addIncludedOnlyMesh(atmosphere);
-    }
+    atmo.material = atmoMat;
+    // NOT added to glowLayer — screen-space glow doesn't shrink with zoom
   }
 
   private addCloudParticles(planet: Mesh, color: Color3, radius: number): void {
@@ -1560,41 +1554,72 @@ export class PlanetScene {
   }
 
   private addRings(planet: Mesh, radius: number): void {
-    // Create Saturn's rings
-    const ring = MeshBuilder.CreateTorus(
-      `ring_${planet.name}`,
-      {
-        diameter: radius * 2 * 3,
-        thickness: 0.3,
-        tessellation: 128,
-      },
-      this.scene,
-    );
-    ring.parent = planet;
-    ring.position = Vector3.Zero();
-    ring.rotation.x = Math.PI / 2 + 0.2; // Slightly tilted
-    ring.isPickable = false; // Don't block planet picking
+    // Photorealistic Saturn rings — multiple band layers with proper physics-based appearance
+    const ringDefs = [
+      // [innerScale, outerScale, opacity, colorR, colorG, colorB, label]
+      { inner: 1.28, outer: 1.52, alpha: 0.18, r: 0.62, g: 0.55, b: 0.42, name: 'D' },
+      { inner: 1.52, outer: 1.95, alpha: 0.55, r: 0.82, g: 0.73, b: 0.58, name: 'C' },
+      { inner: 1.95, outer: 2.85, alpha: 0.80, r: 0.92, g: 0.85, b: 0.68, name: 'B' },
+      { inner: 2.85, outer: 2.92, alpha: 0.05, r: 0.50, g: 0.45, b: 0.38, name: 'CasDiv' },
+      { inner: 2.92, outer: 3.45, alpha: 0.62, r: 0.78, g: 0.72, b: 0.58, name: 'A' },
+      { inner: 3.45, outer: 3.58, alpha: 0.12, r: 0.55, g: 0.50, b: 0.42, name: 'Encke' },
+      { inner: 3.62, outer: 3.82, alpha: 0.22, r: 0.65, g: 0.58, b: 0.48, name: 'F' },
+    ];
 
-    const ringMat = new StandardMaterial(`ringMat_${planet.name}`, this.scene);
+    for (const def of ringDefs) {
+      const innerR = radius * def.inner;
+      const outerR = radius * def.outer;
+      const midR   = (innerR + outerR) / 2;
+      const thick  = (outerR - innerR);
 
-    // Create ring texture
-    const ringTexture = new DynamicTexture('ringTex', 256, this.scene, false);
-    const ctx = ringTexture.getContext();
+      const ring = MeshBuilder.CreateTorus(
+        `ring_${def.name}_${planet.name}`,
+        { diameter: midR * 2, thickness: thick, tessellation: 256 },
+        this.scene,
+      );
+      ring.parent = planet;
+      ring.position = Vector3.Zero();
+      ring.rotation.x = Math.PI / 2 + 0.44; // Saturn axial tilt ~26.7°
+      ring.isPickable = false;
 
-    // Create banded rings
-    for (let i = 0; i < 256; i++) {
-      const brightness = Math.sin(i * 0.1) * 50 + 150;
-      const alpha = Math.random() * 0.3 + 0.5;
-      ctx.fillStyle = `rgba(${brightness}, ${brightness - 20}, ${brightness - 40}, ${alpha})`;
-      ctx.fillRect(i, 0, 1, 256);
+      const ringTex = new DynamicTexture(`ringTex_${def.name}`, 1024, this.scene, false);
+      const rc = ringTex.getContext() as CanvasRenderingContext2D;
+
+      // Base ring color
+      rc.fillStyle = `rgba(${Math.floor(def.r*255)},${Math.floor(def.g*255)},${Math.floor(def.b*255)},1)`;
+      rc.fillRect(0, 0, 1024, 1024);
+
+      // Radial density bands
+      for (let i = 0; i < 1024; i++) {
+        const t = i / 1024;
+        const density = 0.55 + Math.sin(t * Math.PI * 12) * 0.2
+                             + Math.sin(t * Math.PI * 37) * 0.08
+                             + Math.sin(t * Math.PI * 91) * 0.04
+                             + Math.cos(t * Math.PI * 5)  * 0.12;
+        const alpha = Math.max(0, Math.min(1, density));
+        const br = Math.floor(def.r * 255 * density);
+        const bg = Math.floor(def.g * 255 * density);
+        const bb = Math.floor(def.b * 255 * density);
+        rc.fillStyle = `rgba(${br},${bg},${bb},${alpha})`;
+        rc.fillRect(i, 0, 1, 1024);
+      }
+      // Subtle horizontal noise for ice/rock variation
+      for (let j = 0; j < 60; j++) {
+        const y = Math.random() * 1024;
+        const h = Math.random() * 4 + 1;
+        const a = Math.random() * 0.12;
+        rc.fillStyle = `rgba(255,248,220,${a})`;
+        rc.fillRect(0, y, 1024, h);
+      }
+      ringTex.update();
+
+      const ringMat = new StandardMaterial(`ringMat_${def.name}_${planet.name}`, this.scene);
+      ringMat.diffuseTexture  = ringTex;
+      ringMat.emissiveColor   = new Color3(def.r * 0.28, def.g * 0.25, def.b * 0.18);
+      ringMat.alpha           = def.alpha;
+      ringMat.backFaceCulling = false;
+      ring.material = ringMat;
     }
-    ringTexture.update();
-
-    ringMat.diffuseTexture = ringTexture;
-    ringMat.emissiveColor = new Color3(0.3, 0.25, 0.2);
-    ringMat.alpha = 0.7;
-    ringMat.backFaceCulling = false;
-    ring.material = ringMat;
   }
 
   private addEnergyField(planet: Mesh, radius: number): void {
@@ -1710,6 +1735,7 @@ export class PlanetScene {
 
   private onPlanetClick(planet: Mesh, planetId: string): void {
     this.playSound('click');
+    this.hidePlanetTooltip();
 
     // Require authentication
     if (!this.currentUser) {
@@ -1765,7 +1791,7 @@ export class PlanetScene {
 
   private setupModalInteraction(): void {
     const modal = document.getElementById('planetModal');
-    const closeBtn = document.querySelector('.close');
+    const closeBtn = document.querySelector('#planetModal .close');
     const form = document.getElementById('planetForm');
     const enablePaymentCheckbox = document.getElementById(
       'enablePayment',
@@ -2641,6 +2667,7 @@ export class PlanetScene {
     if (this.isCameraTransitioning) return; // Prevent multiple transitions
 
     this.playSound('galaxy-switch');
+    this.hidePlanetTooltip();
     const previousIndex = this.currentGalaxyIndex;
     this.currentGalaxyIndex = index;
 
@@ -3121,9 +3148,87 @@ export class PlanetScene {
     window.addEventListener('keydown', this.keyboardHandler);
   }
 
+  private createPlanetTooltip(): void {
+    const tooltip = document.createElement('div');
+    tooltip.id = 'planetTooltip';
+    tooltip.style.cssText = `
+      position: fixed;
+      display: none;
+      max-width: 240px;
+      background: linear-gradient(135deg, rgba(26,26,46,0.97) 0%, rgba(22,33,62,0.97) 100%);
+      border: 1px solid rgba(138,127,255,0.45);
+      border-radius: 12px;
+      padding: 12px 15px;
+      color: #e0d9ff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 13px;
+      pointer-events: none;
+      z-index: 800;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.55), 0 0 18px rgba(106,90,205,0.25);
+      backdrop-filter: blur(8px);
+      transition: opacity 0.15s ease;
+    `;
+    document.body.appendChild(tooltip);
+    this.planetTooltip = tooltip;
+
+    // Follow the mouse cursor
+    window.addEventListener('mousemove', (e) => {
+      if (this.planetTooltip && this.planetTooltip.style.display !== 'none') {
+        const offsetX = 18;
+        const offsetY = 12;
+        const vpW = window.innerWidth;
+        const vpH = window.innerHeight;
+        const tipW = this.planetTooltip.offsetWidth || 240;
+        const tipH = this.planetTooltip.offsetHeight || 80;
+        let x = e.clientX + offsetX;
+        let y = e.clientY + offsetY;
+        if (x + tipW > vpW - 8) x = e.clientX - tipW - offsetX;
+        if (y + tipH > vpH - 8) y = e.clientY - tipH - offsetY;
+        this.planetTooltip.style.left = `${x}px`;
+        this.planetTooltip.style.top = `${y}px`;
+      }
+    });
+  }
+
+  private showPlanetTooltip(planetId: string): void {
+    if (!this.planetTooltip) return;
+    const data = this.planetDataMap.get(planetId);
+    if (!data) return;
+
+    const isClaimed = !!(data.claimedBy || data.userId);
+    const claimedByText = data.claimedBy
+      ? `<div style="margin-top:6px;font-size:11px;color:#9a8fff;">
+           👤 Claimed by <strong style="color:#c4bcff;">${this.escapeHtml(data.claimedBy || '')}</strong>
+         </div>`
+      : '';
+    const descText = data.description
+      ? `<div style="margin-top:6px;color:#b8b4e0;font-size:12px;line-height:1.4;">${this.escapeHtml(data.description)}</div>`
+      : '';
+    const statusBadge = isClaimed
+      ? `<span style="background:rgba(138,127,255,0.25);border:1px solid rgba(138,127,255,0.5);border-radius:8px;padding:1px 7px;font-size:10px;color:#c4bcff;margin-left:6px;">claimed</span>`
+      : `<span style="background:rgba(80,200,120,0.18);border:1px solid rgba(80,200,120,0.4);border-radius:8px;padding:1px 7px;font-size:10px;color:#7eeea0;margin-left:6px;">unclaimed</span>`;
+
+    this.planetTooltip.innerHTML = `
+      <div style="display:flex;align-items:center;gap:4px;font-weight:700;font-size:14px;color:#fff;">
+        🪐 ${this.escapeHtml(data.name)}${statusBadge}
+      </div>
+      ${descText}
+      ${claimedByText}
+      <div style="margin-top:8px;font-size:10px;color:rgba(138,127,255,0.6);font-style:italic;">Click to ${isClaimed ? 'edit' : 'claim'} this planet</div>
+    `;
+    this.planetTooltip.style.display = 'block';
+  }
+
+  private hidePlanetTooltip(): void {
+    if (this.planetTooltip) {
+      this.planetTooltip.style.display = 'none';
+    }
+  }
+
   private setupCameraPresetUI(): void {
     // Create UI overlay
     const uiDiv = document.createElement('div');
+    uiDiv.id = 'controls-panel';
     uiDiv.style.position = 'absolute';
     uiDiv.style.top = '20px';
     uiDiv.style.left = '20px';
@@ -3158,7 +3263,7 @@ export class PlanetScene {
     const titleSpan = document.createElement('span');
     titleSpan.style.fontWeight = 'bold';
     titleSpan.style.fontSize = '16px';
-    titleSpan.textContent = 'Camera Controls 🎮';
+    titleSpan.textContent = 'Controls 🎮';
 
     const toggleButton = document.createElement('button');
     toggleButton.textContent = '−';
@@ -3183,25 +3288,107 @@ export class PlanetScene {
     headerDiv.appendChild(titleSpan);
     headerDiv.appendChild(toggleButton);
 
-    // Create content div
+    // Helper: create a tappable control button (works for mouse and touch)
+    const mkBtn = (label: string, action: () => void): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.style.cssText = [
+        'padding:6px 8px',
+        'background:rgba(255,255,255,0.15)',
+        'border:1px solid rgba(255,255,255,0.3)',
+        'color:white',
+        'border-radius:6px',
+        'cursor:pointer',
+        'font-size:12px',
+        'width:100%',
+        'text-align:center',
+        'transition:background 0.2s',
+        'touch-action:manipulation',
+        'user-select:none',
+        '-webkit-user-select:none',
+      ].join(';');
+      btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.28)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.15)'; });
+      btn.addEventListener('click', (e) => { e.stopPropagation(); action(); });
+      return btn;
+    };
+
+    // Create content div with interactive tap buttons
     const contentDiv = document.createElement('div');
-    contentDiv.innerHTML = `
-      <div style="margin-bottom: 5px;"><strong>1:</strong> Spawn Point</div>
-      <div style="margin-bottom: 5px;"><strong>2:</strong> Overview</div>
-      <div style="margin-bottom: 5px;"><strong>3:</strong> Follow Sun</div>
-      <div style="margin-bottom: 5px;"><strong>4-9:</strong> Follow Planet</div>
-      <div style="margin-bottom: 5px;"><strong>Arrow Keys:</strong> Manual Control</div>
-      <div style="margin-bottom: 5px;"><strong>M:</strong> Toggle Mouse Control</div>
-      <div style="margin-bottom: 5px;"><strong>G:</strong> Switch Galaxy</div>
-      <div style="margin-bottom: 5px;"><strong>N:</strong> Next Melody Mode</div>
-      <div style="margin-bottom: 5px;"><strong>R:</strong> Random Melody</div>
-      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3);">
-        <strong>Current:</strong> <span id="currentPreset">Spawn Point</span>
-      </div>
-      <div style="margin-top: 5px;">
-        <strong>Galaxy:</strong> <span id="currentGalaxy">Solar System</span>
-      </div>
+
+    // — Preset buttons row (1 / 2 / 3)
+    const presetGrid = document.createElement('div');
+    presetGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px';
+    presetGrid.appendChild(mkBtn('1 · Spawn', () => this.setCameraPreset(CameraPreset.SPAWN_POINT)));
+    presetGrid.appendChild(mkBtn('2 · View', () => this.setCameraPreset(CameraPreset.OVERVIEW)));
+    presetGrid.appendChild(mkBtn('3 · Sun', () => this.setCameraPreset(CameraPreset.FOLLOW_SUN)));
+    contentDiv.appendChild(presetGrid);
+
+    // — Planet follow buttons (P1–P6)
+    const planetLabel = document.createElement('div');
+    planetLabel.textContent = 'Follow Planet:';
+    planetLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px';
+    contentDiv.appendChild(planetLabel);
+
+    const planetGrid = document.createElement('div');
+    planetGrid.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:8px';
+    for (let i = 0; i < 6; i++) {
+      const idx = i;
+      const pBtn = mkBtn(`P${idx + 1}`, () => {
+        const gal = this.galaxies[this.currentGalaxyIndex];
+        const pid = `${gal.id}_planet_${idx}`;
+        const mesh = this.planets.get(pid);
+        if (mesh) this.followPlanet(mesh, pid);
+      });
+      pBtn.style.padding = '6px 2px';
+      planetGrid.appendChild(pBtn);
+    }
+    contentDiv.appendChild(planetGrid);
+
+    // Detect touch/mobile: coarse pointer = no mouse/keyboard
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+
+    if (!isTouchDevice) {
+      // — Camera D-pad (zoom + rotate) — desktop only
+      const camLabel = document.createElement('div');
+      camLabel.textContent = 'Camera:';
+      camLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px';
+      contentDiv.appendChild(camLabel);
+
+      const dpad = document.createElement('div');
+      dpad.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px';
+      const empty1 = document.createElement('div');
+      const empty2 = document.createElement('div');
+      const zoomIn  = mkBtn('▲',  () => { this.camera.radius = Math.max(this.camera.lowerRadiusLimit, this.camera.radius - 5); });
+      const rotL    = mkBtn('◀',  () => { this.camera.alpha -= 0.1; });
+      const zoomOut = mkBtn('▼',  () => { this.camera.radius = Math.min(this.camera.upperRadiusLimit, this.camera.radius + 5); });
+      const rotR    = mkBtn('▶',  () => { this.camera.alpha += 0.1; });
+      dpad.appendChild(empty1); dpad.appendChild(zoomIn); dpad.appendChild(empty2);
+      dpad.appendChild(rotL);   dpad.appendChild(zoomOut); dpad.appendChild(rotR);
+      contentDiv.appendChild(dpad);
+    }
+
+    // — Action buttons (G / N / R, plus M·Mouse for desktop only)
+    const actionGrid = document.createElement('div');
+    actionGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px';
+    if (!isTouchDevice) {
+      actionGrid.appendChild(mkBtn('M · Mouse', () => this.toggleManualControl()));
+    }
+    actionGrid.appendChild(mkBtn('G · Galaxy', () => {
+      this.switchGalaxy((this.currentGalaxyIndex + 1) % this.galaxies.length);
+    }));
+    actionGrid.appendChild(mkBtn('N · Melody', () => this.switchMelodyMode()));
+    actionGrid.appendChild(mkBtn('R · Random', () => this.randomizeMelodyMode()));
+    contentDiv.appendChild(actionGrid);
+
+    // — Status display
+    const statusDiv = document.createElement('div');
+    statusDiv.style.cssText = 'padding-top:8px;border-top:1px solid rgba(255,255,255,0.3);font-size:12px';
+    statusDiv.innerHTML = `
+      <div><strong>Current:</strong> <span id="currentPreset">Spawn Point</span></div>
+      <div style="margin-top:4px"><strong>Galaxy:</strong> <span id="currentGalaxy">Solar System</span></div>
     `;
+    contentDiv.appendChild(statusDiv);
 
     // Create volume control section
     const volumeDiv = document.createElement('div');
@@ -3267,6 +3454,23 @@ export class PlanetScene {
     };
 
     headerDiv.addEventListener('click', toggleContent);
+
+    // Hide the controls panel whenever a modal is open, restore when closed
+    const modalIds = ['planetModal', 'authModal'];
+    const observeModal = (id: string) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const obs = new MutationObserver(() => {
+        const anyOpen = modalIds.some(
+          mid => (document.getElementById(mid)?.style.display || 'none') !== 'none'
+        );
+        uiDiv.style.visibility = anyOpen ? 'hidden' : 'visible';
+        uiDiv.style.pointerEvents = anyOpen ? 'none' : 'auto';
+      });
+      obs.observe(el, { attributes: true, attributeFilter: ['style'] });
+      this.modalObservers.push(obs);
+    };
+    modalIds.forEach(observeModal);
 
     document.body.appendChild(uiDiv);
     this.cameraPresetUI = uiDiv;
@@ -3785,39 +3989,42 @@ export class PlanetScene {
   }
 
   private createNebula(): void {
-    // Add a nebula effect in the background
-    const nebula = new ParticleSystem('nebula', 800, this.scene);
+    // Shared cloud texture — one allocation
+    const cloudTex = new DynamicTexture('nebulaCloudTex', 128, this.scene, false);
+    const nc = cloudTex.getContext() as CanvasRenderingContext2D;
+    const ng = nc.createRadialGradient(64, 64, 0, 64, 64, 64);
+    ng.addColorStop(0,   'rgba(255,255,255,1)');
+    ng.addColorStop(0.4, 'rgba(255,255,255,0.55)');
+    ng.addColorStop(0.75,'rgba(255,255,255,0.2)');
+    ng.addColorStop(1,   'rgba(255,255,255,0)');
+    nc.fillStyle = ng; nc.fillRect(0, 0, 128, 128);
+    cloudTex.update();
 
-    // Large emission box to cover space
-    nebula.minEmitBox = new Vector3(-200, -100, -200);
-    nebula.maxEmitBox = new Vector3(200, 100, 200);
+    // Two nebula regions — blue/violet and warm red — efficient particle counts
+    const regions = [
+      { name: 'nebulaBlue', pos: new Vector3(-120, 30, -80),  r: 80,
+        c1: new Color4(0.2, 0.38, 1.0, 0.055), c2: new Color4(0.42, 0.22, 0.9, 0.04) },
+      { name: 'nebulaRed',  pos: new Vector3(110, -35, 130), r: 70,
+        c1: new Color4(1.0, 0.14, 0.2, 0.05),  c2: new Color4(0.85, 0.08, 0.3, 0.035) },
+    ];
 
-    // Multiple colors for nebula effect
-    nebula.color1 = new Color4(0.4, 0.2, 0.6, 0.15);
-    nebula.color2 = new Color4(0.6, 0.3, 0.8, 0.2);
-    nebula.colorDead = new Color4(0.3, 0.1, 0.5, 0);
-
-    // Large, slow-moving particles
-    nebula.minSize = 8;
-    nebula.maxSize = 20;
-
-    nebula.minLifeTime = 15;
-    nebula.maxLifeTime = 30;
-
-    nebula.emitRate = 10;
-
-    // Very slow drift
-    nebula.minEmitPower = 0.1;
-    nebula.maxEmitPower = 0.2;
-
-    // Subtle rotation
-    nebula.minAngularSpeed = -0.05;
-    nebula.maxAngularSpeed = 0.05;
-
-    // Additive blending for ethereal effect
-    nebula.blendMode = ParticleSystem.BLENDMODE_ADD;
-
-    nebula.start();
+    for (const def of regions) {
+      const neb = new ParticleSystem(def.name, 200, this.scene);
+      neb.emitter = def.pos;
+      neb.minEmitBox = new Vector3(-def.r, -def.r * 0.6, -def.r);
+      neb.maxEmitBox = new Vector3(def.r, def.r * 0.6, def.r);
+      neb.particleTexture = cloudTex;
+      neb.minSize = 20; neb.maxSize = 55;
+      neb.minLifeTime = 60; neb.maxLifeTime = 120;
+      neb.emitRate = 4;
+      neb.blendMode = ParticleSystem.BLENDMODE_ADD;
+      neb.minEmitPower = 0.04; neb.maxEmitPower = 0.15;
+      neb.minAngularSpeed = -0.01; neb.maxAngularSpeed = 0.01;
+      neb.color1    = def.c1;
+      neb.color2    = def.c2;
+      neb.colorDead = new Color4(0, 0, 0, 0);
+      neb.start();
+    }
   }
 
   private toggleMusic(): void {
@@ -5380,6 +5587,12 @@ export class PlanetScene {
       this.meteorInterval = null;
     }
 
+    // Clear sun surface animation interval
+    if (this.sunUpdateInterval !== null) {
+      clearInterval(this.sunUpdateInterval);
+      this.sunUpdateInterval = null;
+    }
+
     // Clear leaderboard update interval
     this.stopLeaderboardUpdates();
 
@@ -5406,10 +5619,20 @@ export class PlanetScene {
       this.keyboardHandler = null;
     }
 
+    // Disconnect modal observers
+    this.modalObservers.forEach(obs => obs.disconnect());
+    this.modalObservers = [];
+
     // Remove camera preset UI
     if (this.cameraPresetUI && this.cameraPresetUI.parentNode) {
       this.cameraPresetUI.parentNode.removeChild(this.cameraPresetUI);
       this.cameraPresetUI = null;
+    }
+
+    // Remove planet tooltip
+    if (this.planetTooltip && this.planetTooltip.parentNode) {
+      this.planetTooltip.parentNode.removeChild(this.planetTooltip);
+      this.planetTooltip = null;
     }
 
     // Unsubscribe from all Firebase subscriptions

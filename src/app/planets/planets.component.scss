@@ -878,3 +878,152 @@ h2 {
   .streak-icon { font-size: 18px; }
   #streakDays, #customSlots { font-weight: 700; color: #ffd080; }
 }
+
+/* ── Mobile / Responsive ────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+
+  /* Controls panel: push below the auth status bar so they don't overlap.
+     The panel uses inline styles (JS-built), so !important is required to override them. */
+  #controls-panel {
+    top: 68px !important;
+    max-width: calc(100vw - 24px) !important;
+    font-size: 13px !important;
+  }
+
+  /* Auth status: left-align so it doesn't collide with leaderboard toggle */
+  .auth-status {
+    left: 12px;
+    right: auto;
+    transform: none;
+    font-size: 11px;
+    padding: 5px 10px;
+    max-width: calc(100vw - 96px);
+  }
+
+  #authUserDisplay {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 110px;
+  }
+
+  /* Leaderboard toggle: slightly smaller, safe margin */
+  .leaderboard-toggle {
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+    top: 12px;
+    right: 12px;
+  }
+
+  /* Leaderboard panel: slide up from the bottom on mobile */
+  .leaderboard-panel {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: -100vh;
+    width: 100%;
+    max-height: 80vh;
+    border-radius: 20px 20px 0 0;
+    transition: bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .leaderboard-panel.open {
+    right: 0;
+    bottom: 0;
+  }
+
+  .leaderboard-content {
+    max-height: calc(80vh - 110px);
+  }
+
+  /* Modal: tighter padding, full available width */
+  .modal-content {
+    width: 95%;
+    padding: 20px 16px;
+  }
+
+  .modal-content h2 {
+    font-size: 20px;
+    letter-spacing: 1px;
+  }
+
+  /* Bigger touch targets for close buttons */
+  .close {
+    padding: 8px;
+    margin: -8px -8px -8px 0;
+  }
+
+  .leaderboard-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Auth tabs: taller touch target */
+  .auth-tab {
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .auth-modal-content {
+    padding: 20px 16px 16px;
+  }
+
+  /* Planet edit form */
+  #planetForm {
+    gap: 16px;
+  }
+
+  #planetForm input,
+  #planetForm textarea {
+    padding: 11px 14px;
+    font-size: 14px;
+  }
+
+  #planetForm button {
+    padding: 14px;
+    font-size: 14px;
+  }
+
+  /* Customization cards: tighter on medium phones */
+  .custom-card label {
+    padding: 12px 8px 10px;
+    min-height: 88px;
+  }
+
+  .custom-card-icon {
+    font-size: 24px;
+  }
+
+  .custom-cards-scroll {
+    max-height: 260px;
+  }
+
+  /* Streak display */
+  .streak-display {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+
+  /* Even tighter card layout on narrow phones */
+  .custom-card label {
+    padding: 10px 6px 8px;
+    min-height: 80px;
+  }
+
+  .custom-card-icon {
+    font-size: 22px;
+  }
+
+  .custom-card-name {
+    font-size: 10px;
+  }
+
+  .custom-card-desc {
+    font-size: 8.5px;
+  }
+}
