@@ -518,14 +518,15 @@ export class PlanetScene {
       pipeline.fxaaEnabled = true;
       pipeline.samples = 4;
 
-      // Cinematic bloom — dramatic glow on bright emissive surfaces
+      // Bloom — only the brightest emissive areas glow (sun, auras); threshold kept high
+      // to avoid a whole-scene dreamy haze that looks blurry
       pipeline.bloomEnabled = true;
-      pipeline.bloomThreshold = 0.35; // bloom more areas for dramatic look
-      pipeline.bloomWeight    = 0.55; // strong cinematic bloom
+      pipeline.bloomThreshold = 0.65; // only very bright pixels
+      pipeline.bloomWeight    = 0.35; // moderate — adds drama without muddying the image
       pipeline.bloomKernel    = 128;
       pipeline.bloomScale     = 0.7;
 
-      // Cinematic image processing
+      // Image processing — rich but sharp
       pipeline.imageProcessingEnabled = true;
       pipeline.imageProcessing.vignetteEnabled   = true;
       pipeline.imageProcessing.vignetteWeight    = 3.5;
@@ -534,15 +535,8 @@ export class PlanetScene {
       pipeline.imageProcessing.contrast  = 1.35;
       pipeline.imageProcessing.exposure  = 1.1;
 
-      // Subtle chromatic aberration — cinematic lens feel
-      pipeline.chromaticAberrationEnabled = true;
-      pipeline.chromaticAberration.aberrationAmount = 0.5;
-      pipeline.chromaticAberration.radialIntensity   = 0.5;
-
-      // Very light film grain — adds depth and tactile realism
-      pipeline.grainEnabled = true;
-      pipeline.grain.intensity = 5;
-      pipeline.grain.animated = true;
+      // NO chromatic aberration — splits RGB channels, makes edges look blurry
+      // NO film grain — adds noise that reads as blur
     } catch (_e) {
       // Post-processing unavailable in this environment
     }
