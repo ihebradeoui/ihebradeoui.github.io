@@ -115,6 +115,7 @@ export class PlanetScene {
   private followingPlanet: Mesh | null = null;
   private cameraPresetUI: HTMLDivElement | null = null;
   private keyboardHandler: ((event: KeyboardEvent) => void) | null = null;
+  private modalObservers: MutationObserver[] = [];
   private cameraControlsAttached: boolean = false; // Track camera control state
   private galaxies: GalaxyData[] = [];
   private currentGalaxyIndex: number = 0;
@@ -1790,7 +1791,7 @@ export class PlanetScene {
 
   private setupModalInteraction(): void {
     const modal = document.getElementById('planetModal');
-    const closeBtn = document.querySelector('.close');
+    const closeBtn = document.querySelector('#planetModal .close');
     const form = document.getElementById('planetForm');
     const enablePaymentCheckbox = document.getElementById(
       'enablePayment',
@@ -3344,28 +3345,35 @@ export class PlanetScene {
     }
     contentDiv.appendChild(planetGrid);
 
-    // — Camera D-pad (zoom + rotate)
-    const camLabel = document.createElement('div');
-    camLabel.textContent = 'Camera:';
-    camLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px';
-    contentDiv.appendChild(camLabel);
+    // Detect touch/mobile: coarse pointer = no mouse/keyboard
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
-    const dpad = document.createElement('div');
-    dpad.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px';
-    const empty1 = document.createElement('div');
-    const empty2 = document.createElement('div');
-    const zoomIn  = mkBtn('▲',  () => { this.camera.radius = Math.max(this.camera.lowerRadiusLimit, this.camera.radius - 5); });
-    const rotL    = mkBtn('◀',  () => { this.camera.alpha -= 0.1; });
-    const zoomOut = mkBtn('▼',  () => { this.camera.radius = Math.min(this.camera.upperRadiusLimit, this.camera.radius + 5); });
-    const rotR    = mkBtn('▶',  () => { this.camera.alpha += 0.1; });
-    dpad.appendChild(empty1); dpad.appendChild(zoomIn); dpad.appendChild(empty2);
-    dpad.appendChild(rotL);   dpad.appendChild(zoomOut); dpad.appendChild(rotR);
-    contentDiv.appendChild(dpad);
+    if (!isTouchDevice) {
+      // — Camera D-pad (zoom + rotate) — desktop only
+      const camLabel = document.createElement('div');
+      camLabel.textContent = 'Camera:';
+      camLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px';
+      contentDiv.appendChild(camLabel);
 
-    // — Action buttons (M / G / N / R)
+      const dpad = document.createElement('div');
+      dpad.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px';
+      const empty1 = document.createElement('div');
+      const empty2 = document.createElement('div');
+      const zoomIn  = mkBtn('▲',  () => { this.camera.radius = Math.max(this.camera.lowerRadiusLimit, this.camera.radius - 5); });
+      const rotL    = mkBtn('◀',  () => { this.camera.alpha -= 0.1; });
+      const zoomOut = mkBtn('▼',  () => { this.camera.radius = Math.min(this.camera.upperRadiusLimit, this.camera.radius + 5); });
+      const rotR    = mkBtn('▶',  () => { this.camera.alpha += 0.1; });
+      dpad.appendChild(empty1); dpad.appendChild(zoomIn); dpad.appendChild(empty2);
+      dpad.appendChild(rotL);   dpad.appendChild(zoomOut); dpad.appendChild(rotR);
+      contentDiv.appendChild(dpad);
+    }
+
+    // — Action buttons (G / N / R, plus M·Mouse for desktop only)
     const actionGrid = document.createElement('div');
     actionGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px';
-    actionGrid.appendChild(mkBtn('M · Mouse', () => this.toggleManualControl()));
+    if (!isTouchDevice) {
+      actionGrid.appendChild(mkBtn('M · Mouse', () => this.toggleManualControl()));
+    }
     actionGrid.appendChild(mkBtn('G · Galaxy', () => {
       this.switchGalaxy((this.currentGalaxyIndex + 1) % this.galaxies.length);
     }));
@@ -3446,6 +3454,23 @@ export class PlanetScene {
     };
 
     headerDiv.addEventListener('click', toggleContent);
+
+    // Hide the controls panel whenever a modal is open, restore when closed
+    const modalIds = ['planetModal', 'authModal'];
+    const observeModal = (id: string) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const obs = new MutationObserver(() => {
+        const anyOpen = modalIds.some(
+          mid => (document.getElementById(mid)?.style.display || 'none') !== 'none'
+        );
+        uiDiv.style.visibility = anyOpen ? 'hidden' : 'visible';
+        uiDiv.style.pointerEvents = anyOpen ? 'none' : 'auto';
+      });
+      obs.observe(el, { attributes: true, attributeFilter: ['style'] });
+      this.modalObservers.push(obs);
+    };
+    modalIds.forEach(observeModal);
 
     document.body.appendChild(uiDiv);
     this.cameraPresetUI = uiDiv;
@@ -5593,6 +5618,10 @@ export class PlanetScene {
       window.removeEventListener('keydown', this.keyboardHandler);
       this.keyboardHandler = null;
     }
+
+    // Disconnect modal observers
+    this.modalObservers.forEach(obs => obs.disconnect());
+    this.modalObservers = [];
 
     // Remove camera preset UI
     if (this.cameraPresetUI && this.cameraPresetUI.parentNode) {
