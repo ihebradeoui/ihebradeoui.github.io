@@ -3227,6 +3227,7 @@ export class PlanetScene {
   private setupCameraPresetUI(): void {
     // Create UI overlay
     const uiDiv = document.createElement('div');
+    uiDiv.id = 'controls-panel';
     uiDiv.style.position = 'absolute';
     uiDiv.style.top = '20px';
     uiDiv.style.left = '20px';
@@ -3261,7 +3262,7 @@ export class PlanetScene {
     const titleSpan = document.createElement('span');
     titleSpan.style.fontWeight = 'bold';
     titleSpan.style.fontSize = '16px';
-    titleSpan.textContent = 'Camera Controls 🎮';
+    titleSpan.textContent = 'Controls 🎮';
 
     const toggleButton = document.createElement('button');
     toggleButton.textContent = '−';
@@ -3286,25 +3287,100 @@ export class PlanetScene {
     headerDiv.appendChild(titleSpan);
     headerDiv.appendChild(toggleButton);
 
-    // Create content div
+    // Helper: create a tappable control button (works for mouse and touch)
+    const mkBtn = (label: string, action: () => void): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.style.cssText = [
+        'padding:6px 8px',
+        'background:rgba(255,255,255,0.15)',
+        'border:1px solid rgba(255,255,255,0.3)',
+        'color:white',
+        'border-radius:6px',
+        'cursor:pointer',
+        'font-size:12px',
+        'width:100%',
+        'text-align:center',
+        'transition:background 0.2s',
+        'touch-action:manipulation',
+        'user-select:none',
+        '-webkit-user-select:none',
+      ].join(';');
+      btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.28)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.15)'; });
+      btn.addEventListener('click', (e) => { e.stopPropagation(); action(); });
+      return btn;
+    };
+
+    // Create content div with interactive tap buttons
     const contentDiv = document.createElement('div');
-    contentDiv.innerHTML = `
-      <div style="margin-bottom: 5px;"><strong>1:</strong> Spawn Point</div>
-      <div style="margin-bottom: 5px;"><strong>2:</strong> Overview</div>
-      <div style="margin-bottom: 5px;"><strong>3:</strong> Follow Sun</div>
-      <div style="margin-bottom: 5px;"><strong>4-9:</strong> Follow Planet</div>
-      <div style="margin-bottom: 5px;"><strong>Arrow Keys:</strong> Manual Control</div>
-      <div style="margin-bottom: 5px;"><strong>M:</strong> Toggle Mouse Control</div>
-      <div style="margin-bottom: 5px;"><strong>G:</strong> Switch Galaxy</div>
-      <div style="margin-bottom: 5px;"><strong>N:</strong> Next Melody Mode</div>
-      <div style="margin-bottom: 5px;"><strong>R:</strong> Random Melody</div>
-      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3);">
-        <strong>Current:</strong> <span id="currentPreset">Spawn Point</span>
-      </div>
-      <div style="margin-top: 5px;">
-        <strong>Galaxy:</strong> <span id="currentGalaxy">Solar System</span>
-      </div>
+
+    // — Preset buttons row (1 / 2 / 3)
+    const presetGrid = document.createElement('div');
+    presetGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px';
+    presetGrid.appendChild(mkBtn('1 · Spawn', () => this.setCameraPreset(CameraPreset.SPAWN_POINT)));
+    presetGrid.appendChild(mkBtn('2 · View', () => this.setCameraPreset(CameraPreset.OVERVIEW)));
+    presetGrid.appendChild(mkBtn('3 · Sun', () => this.setCameraPreset(CameraPreset.FOLLOW_SUN)));
+    contentDiv.appendChild(presetGrid);
+
+    // — Planet follow buttons (P1–P6)
+    const planetLabel = document.createElement('div');
+    planetLabel.textContent = 'Follow Planet:';
+    planetLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px';
+    contentDiv.appendChild(planetLabel);
+
+    const planetGrid = document.createElement('div');
+    planetGrid.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:8px';
+    for (let i = 0; i < 6; i++) {
+      const idx = i;
+      const pBtn = mkBtn(`P${idx + 1}`, () => {
+        const gal = this.galaxies[this.currentGalaxyIndex];
+        const pid = `${gal.id}_planet_${idx}`;
+        const mesh = this.planets.get(pid);
+        if (mesh) this.followPlanet(mesh, pid);
+      });
+      pBtn.style.padding = '6px 2px';
+      planetGrid.appendChild(pBtn);
+    }
+    contentDiv.appendChild(planetGrid);
+
+    // — Camera D-pad (zoom + rotate)
+    const camLabel = document.createElement('div');
+    camLabel.textContent = 'Camera:';
+    camLabel.style.cssText = 'font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px';
+    contentDiv.appendChild(camLabel);
+
+    const dpad = document.createElement('div');
+    dpad.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px';
+    const empty1 = document.createElement('div');
+    const empty2 = document.createElement('div');
+    const zoomIn  = mkBtn('▲',  () => { this.camera.radius = Math.max(this.camera.lowerRadiusLimit, this.camera.radius - 5); });
+    const rotL    = mkBtn('◀',  () => { this.camera.alpha -= 0.1; });
+    const zoomOut = mkBtn('▼',  () => { this.camera.radius = Math.min(this.camera.upperRadiusLimit, this.camera.radius + 5); });
+    const rotR    = mkBtn('▶',  () => { this.camera.alpha += 0.1; });
+    dpad.appendChild(empty1); dpad.appendChild(zoomIn); dpad.appendChild(empty2);
+    dpad.appendChild(rotL);   dpad.appendChild(zoomOut); dpad.appendChild(rotR);
+    contentDiv.appendChild(dpad);
+
+    // — Action buttons (M / G / N / R)
+    const actionGrid = document.createElement('div');
+    actionGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px';
+    actionGrid.appendChild(mkBtn('M · Mouse', () => this.toggleManualControl()));
+    actionGrid.appendChild(mkBtn('G · Galaxy', () => {
+      this.switchGalaxy((this.currentGalaxyIndex + 1) % this.galaxies.length);
+    }));
+    actionGrid.appendChild(mkBtn('N · Melody', () => this.switchMelodyMode()));
+    actionGrid.appendChild(mkBtn('R · Random', () => this.randomizeMelodyMode()));
+    contentDiv.appendChild(actionGrid);
+
+    // — Status display
+    const statusDiv = document.createElement('div');
+    statusDiv.style.cssText = 'padding-top:8px;border-top:1px solid rgba(255,255,255,0.3);font-size:12px';
+    statusDiv.innerHTML = `
+      <div><strong>Current:</strong> <span id="currentPreset">Spawn Point</span></div>
+      <div style="margin-top:4px"><strong>Galaxy:</strong> <span id="currentGalaxy">Solar System</span></div>
     `;
+    contentDiv.appendChild(statusDiv);
 
     // Create volume control section
     const volumeDiv = document.createElement('div');

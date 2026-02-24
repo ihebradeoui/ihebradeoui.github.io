@@ -883,6 +883,14 @@ h2 {
 
 @media (max-width: 768px) {
 
+  /* Controls panel: push below the auth status bar so they don't overlap.
+     The panel uses inline styles (JS-built), so !important is required to override them. */
+  #controls-panel {
+    top: 68px !important;
+    max-width: calc(100vw - 24px) !important;
+    font-size: 13px !important;
+  }
+
   /* Auth status: left-align so it doesn't collide with leaderboard toggle */
   .auth-status {
     left: 12px;
