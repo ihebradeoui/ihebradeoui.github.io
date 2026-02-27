@@ -2110,7 +2110,7 @@ export class PlanetScene {
       ins.className = 'adsbygoogle';
       ins.style.display = 'block';
       // Replace these values with your real AdSense publisher ID and ad slot ID.
-      ins.dataset['adClient'] = 'ca-pub-XXXXXXXXXXXXXXXX';
+      ins.dataset['adClient'] = 'ca-pub-4685187700153873';
       ins.dataset['adSlot']   = 'XXXXXXXXXX';
       ins.dataset['adFormat'] = 'auto';
       ins.dataset['fullWidthResponsive'] = 'true';
