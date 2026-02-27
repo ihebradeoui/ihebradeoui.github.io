@@ -944,31 +944,30 @@ h2 {
 
 /* ── Ad Modal ── */
 .ad-modal-content {
-  max-width: 380px;
+  max-width: 540px;
   text-align: center;
 }
 
 .ad-subtitle {
   color: #bbb4e8;
-  margin: 0 0 20px;
+  margin: 0 0 16px;
   font-size: 14px;
 }
 
-.ad-placeholder {
-  background: rgba(0, 0, 0, 0.4);
-  border: 2px dashed rgba(138, 127, 255, 0.4);
-  border-radius: 12px;
-  padding: 30px 20px;
-  margin: 0 0 20px;
+.ad-container {
+  width: 100%;
+  min-height: 250px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  margin: 0 0 14px;
+  overflow: hidden;
+  /* Ensure the AdSense ins element fills the container */
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
 }
 
-.ad-icon { font-size: 40px; }
-.ad-text { color: #9999cc; font-size: 14px; }
-.ad-timer { font-size: 18px; font-weight: 700; color: #f39c12; }
+.ad-timer { font-size: 16px; font-weight: 700; color: #f39c12; margin-bottom: 16px; }
 
 .ad-claim-btn {
   padding: 12px 28px;

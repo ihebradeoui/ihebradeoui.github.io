@@ -2087,24 +2087,52 @@ export class PlanetScene {
 
   private watchAd(context: 'rent' | 'save', planetId: string): void {
     const adModal = document.getElementById('adModal');
-    if (adModal) {
-      adModal.style.display = 'block';
-      (adModal as any).dataset.context = context;
-      (adModal as any).dataset.planetId = planetId;
-      const adTimer = document.getElementById('adTimer');
-      const adClaimBtn = document.getElementById('adClaimBtn') as HTMLButtonElement;
-      if (adClaimBtn) adClaimBtn.disabled = true;
-      let seconds = 5;
-      if (adTimer) adTimer.textContent = `Ad ends in ${seconds}s`;
-      const interval = window.setInterval(() => {
-        seconds--;
-        if (adTimer) adTimer.textContent = seconds > 0 ? `Ad ends in ${seconds}s` : 'Ad complete!';
-        if (seconds <= 0) {
-          clearInterval(interval);
-          if (adClaimBtn) adClaimBtn.disabled = false;
-        }
-      }, 1000);
+    if (!adModal) return;
+
+    adModal.style.display = 'block';
+    (adModal as any).dataset.context = context;
+    (adModal as any).dataset.planetId = planetId;
+
+    const adContainer = document.getElementById('adContainer');
+    const adTimer = document.getElementById('adTimer');
+    const adClaimBtn = document.getElementById('adClaimBtn') as HTMLButtonElement;
+    if (adClaimBtn) adClaimBtn.disabled = true;
+
+    // Inject a fresh AdSense ins element each time the modal opens.
+    // AdSense requires a new element per push() call; reusing the same ins element
+    // will not load a second ad.
+    if (adContainer) {
+      // Clear previous ad node safely (avoids innerHTML assignment)
+      while (adContainer.firstChild) {
+        adContainer.removeChild(adContainer.firstChild);
+      }
+      const ins = document.createElement('ins');
+      ins.className = 'adsbygoogle';
+      ins.style.display = 'block';
+      // Replace these values with your real AdSense publisher ID and ad slot ID.
+      ins.dataset['adClient'] = 'ca-pub-XXXXXXXXXXXXXXXX';
+      ins.dataset['adSlot']   = 'XXXXXXXXXX';
+      ins.dataset['adFormat'] = 'auto';
+      ins.dataset['fullWidthResponsive'] = 'true';
+      adContainer.appendChild(ins);
+      try {
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+      } catch (e) {
+        console.warn('AdSense push failed:', e);
+      }
     }
+
+    // Minimum 30-second viewing window before credits can be claimed.
+    let seconds = 30;
+    if (adTimer) adTimer.textContent = `Ad ends in ${seconds}s`;
+    const interval = window.setInterval(() => {
+      seconds--;
+      if (adTimer) adTimer.textContent = seconds > 0 ? `Ad ends in ${seconds}s` : 'Ad complete!';
+      if (seconds <= 0) {
+        clearInterval(interval);
+        if (adClaimBtn) adClaimBtn.disabled = false;
+      }
+    }, 1000);
   }
 
   private claimAdCredits(): void {
