@@ -58,6 +58,8 @@ export interface PlanetData {
   customizations?: string[]; // Active cosmetic customization IDs
   userId?: string;
   userEmail?: string;
+  rentedUntil?: number; // Timestamp until rental expires
+  rentedBy?: string;   // userId who rented this planet
 }
 
 export interface GalaxyData {
@@ -93,10 +95,13 @@ export enum CameraPreset {
 }
 
 export class PlanetScene {
-  // PayPal Configuration
-  // TODO: Replace with your actual PayPal subscription plan ID from PayPal Dashboard
-  // Guide: https://developer.paypal.com/docs/subscriptions/
-  private readonly PAYPAL_PLAN_ID: string = 'P-59089777YR022160TNGJVXWA';
+  // Credits system configuration
+  private readonly CREDITS_RENT_COST = 50;    // Credits to rent a planet for 1 week
+  private readonly CREDITS_SAVE_COST = 10;    // Credits to save changes to a rented planet
+  private readonly CREDITS_PER_AD = 10;       // Credits earned per ad watched
+  private readonly RENT_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
+
+  private userCredits: number = 0;
 
   private scene: Scene;
   private engine: Engine;
@@ -197,6 +202,7 @@ export class PlanetScene {
     this.authUnsubscribe = onAuthStateChanged(this.auth, (user) => {
       this.currentUser = user;
       this.updateAuthStatusUI();
+      this.loadUserCredits();
     });
   }
 
@@ -1898,6 +1904,8 @@ export class PlanetScene {
 
       // Show streak info
       this.updateStreakDisplay(planetId);
+      // Update rent section
+      this.updateRentSection(planetId);
 
       this.playSound('modal-open');
       modal.style.display = 'block';
@@ -1909,13 +1917,6 @@ export class PlanetScene {
     const modal = document.getElementById('planetModal');
     const closeBtn = document.querySelector('#planetModal .close');
     const form = document.getElementById('planetForm');
-    const enablePaymentCheckbox = document.getElementById(
-      'enablePayment',
-    ) as HTMLInputElement;
-    const paypalContainer = document.getElementById('paypal-button-container');
-    const saveButton = document.getElementById(
-      'saveButton',
-    ) as HTMLButtonElement;
 
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
@@ -1931,118 +1932,204 @@ export class PlanetScene {
       }
     });
 
-    // Toggle PayPal button visibility
-    if (enablePaymentCheckbox && paypalContainer && saveButton) {
-      enablePaymentCheckbox.addEventListener('change', () => {
-        if (enablePaymentCheckbox.checked) {
-          paypalContainer.style.display = 'block';
-          saveButton.style.display = 'none';
-          this.initPayPalButton();
-        } else {
-          paypalContainer.style.display = 'none';
-          saveButton.style.display = 'block';
-          // Clear PayPal container
-          paypalContainer.innerHTML = '';
-        }
-      });
-    }
-
     if (form) {
       form.addEventListener('submit', (e) => {
         e.preventDefault();
-        this.savePlanet(false); // Free save
+        this.savePlanet();
       });
     }
+
+    // Rent button
+    const rentBtn = document.getElementById('rentBtn');
+    if (rentBtn) {
+      rentBtn.addEventListener('click', () => {
+        const planetId = (modal as any)?.dataset?.planetId;
+        if (planetId) this.rentPlanet(planetId);
+      });
+    }
+
+    // Watch ad for rent credits
+    const watchAdForRentBtn = document.getElementById('watchAdForRentBtn');
+    if (watchAdForRentBtn) {
+      watchAdForRentBtn.addEventListener('click', () => {
+        const planetId = (modal as any)?.dataset?.planetId || '';
+        this.watchAd('rent', planetId);
+      });
+    }
+
+    // Watch ad for save credits
+    const watchAdForSaveBtn = document.getElementById('watchAdForSaveBtn');
+    if (watchAdForSaveBtn) {
+      watchAdForSaveBtn.addEventListener('click', () => {
+        const planetId = (modal as any)?.dataset?.planetId || '';
+        this.watchAd('save', planetId);
+      });
+    }
+
+    // Ad modal claim button
+    const adClaimBtn = document.getElementById('adClaimBtn');
+    if (adClaimBtn) {
+      adClaimBtn.addEventListener('click', () => this.claimAdCredits());
+    }
+
+    // Ad modal close
+    const adModalClose = document.getElementById('adModalClose');
+    const adModal = document.getElementById('adModal');
+    if (adModalClose && adModal) {
+      adModalClose.addEventListener('click', () => { adModal.style.display = 'none'; });
+    }
+    window.addEventListener('click', (event) => {
+      if (event.target === adModal) adModal!.style.display = 'none';
+    });
   }
 
   private initPayPalButton(): void {
-    const paypalContainer = document.getElementById('paypal-button-container');
-    if (!paypalContainer) return;
+    // PayPal has been replaced by the credits system.
+    // This method is kept as a no-op for backwards compatibility.
+  }
 
-    // Clear existing PayPal buttons
-    paypalContainer.innerHTML = '';
+  // ── Credits System ──────────────────────────────────────────────────────────
 
-    // Check if PayPal SDK is loaded
-    if (typeof (window as any).paypal === 'undefined') {
-      console.error('PayPal SDK not loaded');
-      paypalContainer.innerHTML =
-        '<p style="color: #ff6b6b; text-align: center;">PayPal is not available. Please try again later.</p>';
+  private loadUserCredits(): void {
+    if (!this.currentUser) {
+      this.userCredits = 0;
+      this.updateCreditsUI();
       return;
     }
+    const sub = this.database
+      .object(`users/${this.currentUser.uid}/credits`)
+      .valueChanges()
+      .subscribe((credits: any) => {
+        this.userCredits = typeof credits === 'number' ? credits : 0;
+        this.updateCreditsUI();
+      });
+    this.subscriptions.push(sub);
+  }
 
-    // Validate plan ID is configured (not a placeholder)
-    // Check for common placeholder patterns:
-    // - Empty or undefined
-    // - Exact placeholder match
-    // - All X's pattern (like P-XXXXXXXXXXXXXXXXXXXX)
-    const isPlaceholder =
-      !this.PAYPAL_PLAN_ID ||
-      this.PAYPAL_PLAN_ID === 'P-XXXXXXXXXXXXXXXXXXXX' ||
-      /^P-X+$/.test(this.PAYPAL_PLAN_ID);
+  private saveUserCredits(): void {
+    if (!this.currentUser) return;
+    this.database.object(`users/${this.currentUser.uid}/credits`).set(this.userCredits);
+  }
 
-    if (isPlaceholder) {
-      console.warn('PayPal plan ID not configured. Using placeholder ID.');
-      paypalContainer.innerHTML = `
-        <p style="color: #ffa500; text-align: center; margin: 10px 0; font-size: 14px;">
-          ⚠️ PayPal subscription is not configured yet.
-        </p>
-        <p style="color: #9999ff; text-align: center; font-size: 12px; font-style: italic;">
-          The site owner needs to configure a PayPal subscription plan. Please save without subscription for now.
-        </p>
-      `;
+  private updateCreditsUI(): void {
+    const creditsDisplay = document.getElementById('creditsDisplay');
+    if (creditsDisplay) creditsDisplay.textContent = `💰 ${this.userCredits} credits`;
+    // Also refresh planet modal rent section if open
+    const modal = document.getElementById('planetModal');
+    if (modal && modal.style.display !== 'none') {
+      const planetId = (modal as any).dataset.planetId;
+      if (planetId) this.updateRentSection(planetId);
+    }
+  }
+
+  private updateRentSection(planetId: string): void {
+    const rentSection = document.getElementById('rentSection');
+    if (!rentSection) return;
+    const storedData = this.planetDataMap.get(planetId);
+    const now = Date.now();
+    const isRentedByMe = storedData?.rentedBy === this.currentUser?.uid &&
+                         storedData?.rentedUntil && storedData.rentedUntil > now;
+    const isRentedByOther = storedData?.rentedBy && storedData.rentedBy !== this.currentUser?.uid &&
+                             storedData?.rentedUntil && storedData.rentedUntil > now;
+    const saveButton = document.getElementById('saveButton') as HTMLButtonElement;
+    const rentInfo = document.getElementById('rentInfo');
+    const rentBtn = document.getElementById('rentBtn') as HTMLButtonElement;
+    const watchAdForRentBtn = document.getElementById('watchAdForRentBtn') as HTMLButtonElement;
+    const creditsNeededForSave = document.getElementById('creditsNeededForSave');
+    const watchAdForSaveBtn = document.getElementById('watchAdForSaveBtn') as HTMLButtonElement;
+
+    if (isRentedByMe) {
+      const expiryDate = new Date(storedData!.rentedUntil!).toLocaleDateString();
+      if (rentInfo) rentInfo.textContent = `✅ You rented this planet until ${expiryDate}`;
+      if (rentBtn) rentBtn.style.display = 'none';
+      if (watchAdForRentBtn) watchAdForRentBtn.style.display = 'none';
+      const hasSaveCredits = this.userCredits >= this.CREDITS_SAVE_COST;
+      if (creditsNeededForSave) creditsNeededForSave.style.display = hasSaveCredits ? 'none' : 'block';
+      if (watchAdForSaveBtn) watchAdForSaveBtn.style.display = hasSaveCredits ? 'none' : 'inline-block';
+      if (saveButton) saveButton.style.display = hasSaveCredits ? 'block' : 'none';
+    } else if (isRentedByOther) {
+      if (rentInfo) rentInfo.textContent = '🔒 This planet is currently rented by someone else';
+      if (rentBtn) rentBtn.style.display = 'none';
+      if (watchAdForRentBtn) watchAdForRentBtn.style.display = 'none';
+      if (creditsNeededForSave) creditsNeededForSave.style.display = 'none';
+      if (watchAdForSaveBtn) watchAdForSaveBtn.style.display = 'none';
+      if (saveButton) saveButton.style.display = 'none';
+    } else {
+      // Not rented — show rent button
+      if (rentInfo) rentInfo.textContent = `🪐 Rent this planet for ${this.CREDITS_RENT_COST} credits (1 week)`;
+      const hasRentCredits = this.userCredits >= this.CREDITS_RENT_COST;
+      if (rentBtn) rentBtn.style.display = hasRentCredits ? 'inline-block' : 'none';
+      if (watchAdForRentBtn) watchAdForRentBtn.style.display = hasRentCredits ? 'none' : 'inline-block';
+      if (creditsNeededForSave) creditsNeededForSave.style.display = 'none';
+      if (watchAdForSaveBtn) watchAdForSaveBtn.style.display = 'none';
+      if (saveButton) saveButton.style.display = 'none';
+    }
+  }
+
+  private rentPlanet(planetId: string): void {
+    if (!this.currentUser) return;
+    if (this.userCredits < this.CREDITS_RENT_COST) {
+      this.showNotification('❌ Not enough credits! Watch an ad to earn more.', 'error');
       return;
     }
+    const storedData = this.planetDataMap.get(planetId);
+    if (!storedData) return;
+    this.userCredits -= this.CREDITS_RENT_COST;
+    this.saveUserCredits();
+    const rentedUntil = Date.now() + this.RENT_DURATION_MS;
+    const updatedData = { ...storedData, rentedUntil, rentedBy: this.currentUser.uid };
+    this.database.object(`planets/${planetId}`).update({ rentedUntil, rentedBy: this.currentUser.uid });
+    this.planetDataMap.set(planetId, updatedData);
+    this.showNotification(`🎉 Planet rented for 1 week! You have ${this.userCredits} credits remaining.`, 'success');
+    this.updateCreditsUI();
+    this.updateRentSection(planetId);
+  }
 
-    (window as any).paypal
-      .Buttons({
-        createSubscription: (data: any, actions: any) => {
-          // Create subscription for $2.99/month
-          // Note: In production, replace PAYPAL_PLAN_ID with your actual plan ID from PayPal dashboard
-          return actions.subscription.create({
-            plan_id: this.PAYPAL_PLAN_ID,
-            custom_id: `planet_subscription_${Date.now()}`,
-            application_context: {
-              shipping_preference: 'NO_SHIPPING',
-            },
-          });
-        },
-        onApprove: async (data: any, actions: any) => {
-          console.log('Subscription approved:', data);
+  private watchAd(context: 'rent' | 'save', planetId: string): void {
+    const adModal = document.getElementById('adModal');
+    if (adModal) {
+      adModal.style.display = 'block';
+      (adModal as any).dataset.context = context;
+      (adModal as any).dataset.planetId = planetId;
+      const adTimer = document.getElementById('adTimer');
+      const adClaimBtn = document.getElementById('adClaimBtn') as HTMLButtonElement;
+      if (adClaimBtn) adClaimBtn.disabled = true;
+      let seconds = 5;
+      if (adTimer) adTimer.textContent = `Ad ends in ${seconds}s`;
+      const interval = window.setInterval(() => {
+        seconds--;
+        if (adTimer) adTimer.textContent = seconds > 0 ? `Ad ends in ${seconds}s` : 'Ad complete!';
+        if (seconds <= 0) {
+          clearInterval(interval);
+          if (adClaimBtn) adClaimBtn.disabled = false;
+        }
+      }, 1000);
+    }
+  }
 
-          // Save planet with premium flag
-          this.savePlanet(true);
+  private claimAdCredits(): void {
+    const adModal = document.getElementById('adModal');
+    if (!adModal) return;
+    const context = (adModal as any).dataset.context as 'rent' | 'save';
+    const planetId = (adModal as any).dataset.planetId;
+    adModal.style.display = 'none';
+    this.userCredits += this.CREDITS_PER_AD;
+    this.saveUserCredits();
+    this.showNotification(`🎉 You earned ${this.CREDITS_PER_AD} credits! You now have ${this.userCredits} credits.`, 'success');
+    this.updateCreditsUI();
+    if (planetId) this.updateRentSection(planetId);
+  }
 
-          // Show success message
-          alert(
-            '✨ Subscription successful! Your planet names will be saved permanently while subscribed.',
-          );
-        },
-        onError: (err: any) => {
-          console.error('PayPal error:', err);
-
-          // Provide more specific error messages
-          let errorMessage = 'Subscription failed. Please try again.';
-
-          // Check for RESOURCE_NOT_FOUND error (can be in err.name or err.message)
-          const isResourceNotFound =
-            (err && err.name === 'RESOURCE_NOT_FOUND') ||
-            (err &&
-              err.message &&
-              (err.message.includes('RESOURCE_NOT_FOUND') ||
-                err.message.includes('INVALID_RESOURCE_ID')));
-
-          if (isResourceNotFound) {
-            errorMessage =
-              '⚠️ Subscription configuration error. The PayPal plan ID is invalid. Please contact the site administrator.';
-          }
-
-          alert(errorMessage);
-        },
-        onCancel: (data: any) => {
-          console.log('Subscription cancelled:', data);
-        },
-      })
-      .render('#paypal-button-container');
+  private showNotification(message: string, type: 'success' | 'error'): void {
+    const notif = document.createElement('div');
+    notif.className = `credits-notification credits-notification-${type}`;
+    notif.textContent = message;
+    document.body.appendChild(notif);
+    setTimeout(() => { notif.classList.add('credits-notification-visible'); }, 10);
+    setTimeout(() => {
+      notif.classList.remove('credits-notification-visible');
+      setTimeout(() => notif.remove(), 400);
+    }, 3500);
   }
 
   private setupLeaderboard(): void {
@@ -2178,7 +2265,7 @@ export class PlanetScene {
     return div.innerHTML;
   }
 
-  private savePlanet(isPremium: boolean = false): void {
+  private savePlanet(): void {
     const modal = document.getElementById('planetModal');
     const planetId = (modal as any)?.dataset?.planetId;
     const nameInput = document.getElementById('planetName') as HTMLInputElement;
@@ -2190,6 +2277,21 @@ export class PlanetScene {
       const planet = this.planets.get(planetId);
       const storedData = this.planetDataMap.get(planetId);
       if (planet && storedData) {
+        // Verify planet is rented by current user
+        const now = Date.now();
+        const isRentedByMe = storedData.rentedBy === this.currentUser?.uid &&
+                             storedData.rentedUntil && storedData.rentedUntil > now;
+        if (!isRentedByMe) {
+          this.showNotification('🔒 You must rent this planet before making changes!', 'error');
+          return;
+        }
+        // Verify enough credits to save
+        if (this.userCredits < this.CREDITS_SAVE_COST) {
+          this.showNotification(`❌ You need ${this.CREDITS_SAVE_COST} credits to save. Watch an ad to earn more!`, 'error');
+          this.updateRentSection(planetId);
+          return;
+        }
+
         const material = planet.material;
         let color: string;
 
@@ -2202,7 +2304,6 @@ export class PlanetScene {
           color = storedData.color; // Fallback to stored color
         }
 
-        const now = Date.now();
         const previousName = storedData.name;
         const previousClaimedAt = storedData.claimedAt;
         const isNameChange = previousClaimedAt && previousName !== nameInput.value;
@@ -2219,7 +2320,7 @@ export class PlanetScene {
           return checkbox?.checked ?? false;
         });
 
-        const planetData: PlanetData & { isPremium?: boolean } = {
+        const planetData: PlanetData = {
           id: planetId,
           name: nameInput.value,
           description: descInput.value,
@@ -2234,14 +2335,19 @@ export class PlanetScene {
           orbitSpeed: storedData.orbitSpeed,
           orbitAngle: storedData.orbitAngle,
           orbitInclination: storedData.orbitInclination, // IMPORTANT: Save inclination to preserve orbital path
-          isPremium: isPremium,
           claimedAt: finalClaimedAt,
           lastUpdated: now,
           claimedBy: nameInput.value, // Use the planet name as the claimer identifier
           customizations,
           userId: this.currentUser?.uid,
           userEmail: this.currentUser?.email || undefined,
+          rentedUntil: storedData.rentedUntil,
+          rentedBy: storedData.rentedBy,
         };
+
+        // Deduct save credits
+        this.userCredits -= this.CREDITS_SAVE_COST;
+        this.saveUserCredits();
 
         // Save to Firebase
         this.database.object(`planets/${planetId}`).set(planetData);
@@ -2258,24 +2364,11 @@ export class PlanetScene {
         // Play success sound
         this.playSound('save');
 
+        this.showNotification(`✅ Planet saved! ${this.CREDITS_SAVE_COST} credits used. You have ${this.userCredits} credits remaining.`, 'success');
+
         // Close modal
         if (modal) modal.style.display = 'none';
 
-        // Reset form
-        const enablePaymentCheckbox = document.getElementById(
-          'enablePayment',
-        ) as HTMLInputElement;
-        if (enablePaymentCheckbox) {
-          enablePaymentCheckbox.checked = false;
-        }
-        const paypalContainer = document.getElementById(
-          'paypal-button-container',
-        );
-        if (paypalContainer) {
-          paypalContainer.style.display = 'none';
-          paypalContainer.innerHTML = '';
-        }
-        
         // Update leaderboard if it's open
         const leaderboardPanel = document.getElementById('leaderboardPanel');
         if (leaderboardPanel?.classList.contains('open')) {
@@ -4736,6 +4829,7 @@ export class PlanetScene {
     const userDisplay = document.getElementById('authUserDisplay');
     const signOutBtn = document.getElementById('authSignOutBtn');
     const signInBtn = document.getElementById('authSignInBtn');
+    const creditsDisplay = document.getElementById('creditsDisplay');
     if (this.currentUser) {
       const email = this.currentUser.email || '';
       const atIndex = email.indexOf('@');
@@ -4743,10 +4837,12 @@ export class PlanetScene {
       if (userDisplay) userDisplay.textContent = '\uD83D\uDC64 ' + displayEmail;
       if (signOutBtn) signOutBtn.style.display = 'inline-block';
       if (signInBtn) signInBtn.style.display = 'none';
+      if (creditsDisplay) { creditsDisplay.style.display = 'inline'; creditsDisplay.textContent = `💰 ${this.userCredits} credits`; }
     } else {
       if (userDisplay) userDisplay.textContent = '\uD83D\uDC64 Not logged in';
       if (signOutBtn) signOutBtn.style.display = 'none';
       if (signInBtn) signInBtn.style.display = 'inline-block';
+      if (creditsDisplay) creditsDisplay.style.display = 'none';
     }
   }
 
