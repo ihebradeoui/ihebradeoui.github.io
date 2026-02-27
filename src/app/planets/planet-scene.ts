@@ -2115,14 +2115,19 @@ export class PlanetScene {
       ins.dataset['adFormat'] = 'auto';
       ins.dataset['fullWidthResponsive'] = 'true';
       adContainer.appendChild(ins);
-      // Defer push() so the browser completes layout before AdSense measures the width.
-      requestAnimationFrame(() => {
+      // Defer push() with a short timeout so the browser completes layout AND
+      // AdSense's internally lazy-loaded modules finish initialising before
+      // push() is called (a single requestAnimationFrame is not sufficient).
+      // The isConnected guard prevents a push() on a detached element when the
+      // modal is closed before the timeout fires.
+      setTimeout(() => {
+        if (!ins.isConnected) return;
         try {
           ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
         } catch (e) {
           console.warn('AdSense push failed:', e);
         }
-      });
+      }, 100);
     }
 
     // Minimum 30-second viewing window before credits can be claimed.
