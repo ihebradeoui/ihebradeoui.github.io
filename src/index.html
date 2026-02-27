@@ -8,6 +8,15 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <!-- Google AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4685187700153873" crossorigin="anonymous"></script>
+    <script>
+      // Debug: Check when AdSense loads
+      window.addEventListener('load', function() {
+        console.log('🌐 Page loaded. AdSense available:', !!window.adsbygoogle);
+        setTimeout(() => {
+          console.log('⏰ After 2s - AdSense status:', !!window.adsbygoogle, 'Queue length:', (window.adsbygoogle || []).length);
+        }, 2000);
+      });
+    </script>
   </head>
   <body>
     <app-root></app-root>

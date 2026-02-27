@@ -2086,6 +2086,8 @@ export class PlanetScene {
   }
 
   private watchAd(context: 'rent' | 'save', planetId: string): void {
+    console.log('🎬 Opening ad modal for:', context, 'Planet:', planetId);
+    
     const adModal = document.getElementById('adModal');
     if (!adModal) return;
 
@@ -2102,6 +2104,7 @@ export class PlanetScene {
     // AdSense requires a new element per push() call; reusing the same ins element
     // will not load a second ad.
     if (adContainer) {
+      console.log('🔍 Ad Container found, preparing ad...');
       // Clear previous ad node safely (avoids innerHTML assignment)
       while (adContainer.firstChild) {
         adContainer.removeChild(adContainer.firstChild);
@@ -2115,6 +2118,8 @@ export class PlanetScene {
       ins.dataset['adFormat'] = 'auto';
       ins.dataset['fullWidthResponsive'] = 'true';
       adContainer.appendChild(ins);
+      console.log('📺 Ad element created:', ins);
+      console.log('🔧 AdSense object available:', !!(window as any).adsbygoogle);
       // Defer push() so the browser paints the modal at its final dimensions
       // AND AdSense's lazily-loaded show_ads_impl module finishes loading.
       // 300 ms covers the lazy-load round-trip on moderate mobile connections;
@@ -2122,13 +2127,29 @@ export class PlanetScene {
       // The isConnected guard prevents push() on a detached element if the
       // modal is closed before the timeout fires.
       setTimeout(() => {
-        if (!ins.isConnected) return;
+        if (!ins.isConnected) {
+          console.warn('⚠️ Ad element disconnected before push');
+          return;
+        }
         try {
+          console.log('🚀 Pushing ad to AdSense...');
           ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+          console.log('✅ AdSense push successful');
+          
+          // Check if ad loaded after a delay
+          setTimeout(() => {
+            if (ins.innerHTML.trim() === '') {
+              console.warn('⚠️ No ad served (likely localhost or test environment). Showing placeholder.');
+              this.showPlaceholderAd(adContainer);
+            }
+          }, 1500);
         } catch (e) {
-          console.warn('AdSense push failed:', e);
+          console.error('❌ AdSense push failed:', e);
+          this.showPlaceholderAd(adContainer);
         }
       }, 300);
+    } else {
+      console.error('❌ Ad container not found!');
     }
 
     // Minimum 30-second viewing window before credits can be claimed.
@@ -2142,6 +2163,35 @@ export class PlanetScene {
         if (adClaimBtn) adClaimBtn.disabled = false;
       }
     }, 1000);
+  }
+
+  private showPlaceholderAd(container: HTMLElement): void {
+    // Show a placeholder for local testing when real ads don't load
+    container.innerHTML = '';
+    const placeholder = document.createElement('div');
+    placeholder.style.cssText = `
+      width: 100%;
+      min-height: 250px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
+    `;
+    placeholder.innerHTML = `
+      <div style="font-size: 48px; margin-bottom: 16px;">📺</div>
+      <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">Test Ad Placeholder</div>
+      <div style="font-size: 14px; opacity: 0.9;">Real ads will show on production site</div>
+      <div style="font-size: 12px; opacity: 0.7; margin-top: 12px;">
+        (AdSense doesn't serve ads on localhost)
+      </div>
+    `;
+    container.appendChild(placeholder);
   }
 
   private claimAdCredits(): void {
