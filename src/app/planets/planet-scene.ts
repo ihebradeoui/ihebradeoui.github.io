@@ -2115,10 +2115,11 @@ export class PlanetScene {
       ins.dataset['adFormat'] = 'auto';
       ins.dataset['fullWidthResponsive'] = 'true';
       adContainer.appendChild(ins);
-      // Defer push() with a short timeout so the browser completes layout AND
-      // AdSense's internally lazy-loaded modules finish initialising before
-      // push() is called (a single requestAnimationFrame is not sufficient).
-      // The isConnected guard prevents a push() on a detached element when the
+      // Defer push() so the browser paints the modal at its final dimensions
+      // AND AdSense's lazily-loaded show_ads_impl module finishes loading.
+      // 300 ms covers the lazy-load round-trip on moderate mobile connections;
+      // 100 ms was too short and caused an async TypeError inside AdSense.
+      // The isConnected guard prevents push() on a detached element if the
       // modal is closed before the timeout fires.
       setTimeout(() => {
         if (!ins.isConnected) return;
@@ -2127,7 +2128,7 @@ export class PlanetScene {
         } catch (e) {
           console.warn('AdSense push failed:', e);
         }
-      }, 100);
+      }, 300);
     }
 
     // Minimum 30-second viewing window before credits can be claimed.
