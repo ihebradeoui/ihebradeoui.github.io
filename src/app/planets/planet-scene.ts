@@ -2109,17 +2109,20 @@ export class PlanetScene {
       const ins = document.createElement('ins');
       ins.className = 'adsbygoogle';
       ins.style.display = 'block';
-      // Replace these values with your real AdSense publisher ID and ad slot ID.
+      ins.style.width = '100%';
       ins.dataset['adClient'] = 'ca-pub-4685187700153873';
       ins.dataset['adSlot']   = '2386376483';
       ins.dataset['adFormat'] = 'auto';
       ins.dataset['fullWidthResponsive'] = 'true';
       adContainer.appendChild(ins);
-      try {
-        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-      } catch (e) {
-        console.warn('AdSense push failed:', e);
-      }
+      // Defer push() so the browser completes layout before AdSense measures the width.
+      requestAnimationFrame(() => {
+        try {
+          ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+        } catch (e) {
+          console.warn('AdSense push failed:', e);
+        }
+      });
     }
 
     // Minimum 30-second viewing window before credits can be claimed.

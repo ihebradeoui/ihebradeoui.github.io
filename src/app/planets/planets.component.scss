@@ -961,10 +961,6 @@ h2 {
   border-radius: 8px;
   margin: 0 0 14px;
   overflow: hidden;
-  /* Ensure the AdSense ins element fills the container */
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .ad-timer { font-size: 16px; font-weight: 700; color: #f39c12; margin-bottom: 16px; }
