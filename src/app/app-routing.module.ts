@@ -5,8 +5,9 @@ import { NotFoundComponent } from './not-found/not-found.component';
 import { PlanetsComponent } from './planets/planets.component';
 
 const routes: Routes = [
-  {path: '', component:HomeComponent},
-  {path: 'planets', component:PlanetsComponent},
+  {path: '', component:PlanetsComponent},
+  {path: 'home', component:HomeComponent},
+  {path: 'planets', redirectTo: '', pathMatch: 'full'},
   {path: '**', component:NotFoundComponent}
 ];
 
