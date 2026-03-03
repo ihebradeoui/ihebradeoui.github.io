@@ -1158,3 +1158,40 @@ h2 {
     font-size: 8.5px;
   }
 }
+
+/* ── Site Footer (navigation links for AdSense compliance) ── */
+.planets-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 800;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 20px;
+  background: rgba(5, 6, 8, 0.75);
+  border-top: 1px solid rgba(138, 127, 255, 0.15);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  color: #8880c0;
+  pointer-events: auto;
+
+  .footer-brand {
+    font-weight: 600;
+    color: #a09ae0;
+    letter-spacing: 0.3px;
+  }
+
+  .footer-nav {
+    display: flex;
+    gap: 18px;
+
+    a {
+      color: #8880c0;
+      text-decoration: none;
+      transition: color 0.2s;
+      &:hover { color: #e0d9ff; }
+    }
+  }
+}

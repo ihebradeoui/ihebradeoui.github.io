@@ -3,11 +3,18 @@ import { RouterModule, Routes } from '@angular/router';
 import { HomeComponent } from './home/home.component';
 import { NotFoundComponent } from './not-found/not-found.component';
 import { PlanetsComponent } from './planets/planets.component';
+import { PrivacyPolicyComponent } from './privacy-policy/privacy-policy.component';
+import { AboutComponent } from './about/about.component';
+import { LandingComponent } from './landing/landing.component';
 
 const routes: Routes = [
-  {path: '', component:HomeComponent},
-  {path: 'planets', component:PlanetsComponent},
-  {path: '**', component:NotFoundComponent}
+  {path: '', component: LandingComponent},
+  {path: 'play', component: PlanetsComponent},
+  {path: 'home', component: HomeComponent},
+  {path: 'planets', redirectTo: 'play', pathMatch: 'full'},
+  {path: 'about', component: AboutComponent},
+  {path: 'privacy-policy', component: PrivacyPolicyComponent},
+  {path: '**', component: NotFoundComponent}
 ];
 
 @NgModule({

@@ -1,9 +1,14 @@
 /* You can add global styles to this file, and also import other style files */
 
-body,html
-{
+body, html {
     height: 100%;
-    margin: 0; padding: 0;
+    margin: 0;
+    padding: 0;
+    background-color: #000000;
+}
+
+/* Canvas-based views need overflow hidden; text pages need to scroll.
+   Each component manages overflow via :host or wrapper styles. */
+body.canvas-page {
     overflow: hidden;
-    background-color: #000000; /* Deep black background for space theme */
 }
