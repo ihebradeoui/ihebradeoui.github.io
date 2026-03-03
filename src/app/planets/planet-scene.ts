@@ -2100,56 +2100,8 @@ export class PlanetScene {
     const adClaimBtn = document.getElementById('adClaimBtn') as HTMLButtonElement;
     if (adClaimBtn) adClaimBtn.disabled = true;
 
-    // Inject a fresh AdSense ins element each time the modal opens.
-    // AdSense requires a new element per push() call; reusing the same ins element
-    // will not load a second ad.
     if (adContainer) {
-      console.log('🔍 Ad Container found, preparing ad...');
-      // Clear previous ad node safely (avoids innerHTML assignment)
-      while (adContainer.firstChild) {
-        adContainer.removeChild(adContainer.firstChild);
-      }
-      const ins = document.createElement('ins');
-      ins.className = 'adsbygoogle';
-      ins.style.display = 'block';
-      ins.style.width = '100%';
-      ins.dataset['adClient'] = 'ca-pub-4685187700153873';
-      ins.dataset['adSlot']   = '2386376483';
-      ins.dataset['adFormat'] = 'auto';
-      ins.dataset['fullWidthResponsive'] = 'true';
-      adContainer.appendChild(ins);
-      console.log('📺 Ad element created:', ins);
-      console.log('🔧 AdSense object available:', !!(window as any).adsbygoogle);
-      // Defer push() so the browser paints the modal at its final dimensions
-      // AND AdSense's lazily-loaded show_ads_impl module finishes loading.
-      // 300 ms covers the lazy-load round-trip on moderate mobile connections;
-      // 100 ms was too short and caused an async TypeError inside AdSense.
-      // The isConnected guard prevents push() on a detached element if the
-      // modal is closed before the timeout fires.
-      setTimeout(() => {
-        if (!ins.isConnected) {
-          console.warn('⚠️ Ad element disconnected before push');
-          return;
-        }
-        try {
-          console.log('🚀 Pushing ad to AdSense...');
-          ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-          console.log('✅ AdSense push successful');
-          
-          // Check if ad loaded after a delay
-          setTimeout(() => {
-            if (ins.innerHTML.trim() === '') {
-              console.warn('⚠️ No ad served (likely localhost or test environment). Showing placeholder.');
-              this.showPlaceholderAd(adContainer);
-            }
-          }, 1500);
-        } catch (e) {
-          console.error('❌ AdSense push failed:', e);
-          this.showPlaceholderAd(adContainer);
-        }
-      }, 300);
-    } else {
-      console.error('❌ Ad container not found!');
+      this.showPlaceholderAd(adContainer);
     }
 
     // Minimum 30-second viewing window before credits can be claimed.
