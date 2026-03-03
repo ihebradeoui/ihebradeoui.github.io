@@ -26,7 +26,7 @@ jobs:
       run: npm ci
       
     - name: Build Angular application
-      run: npm run build -- --configuration production --base-href https://ihebradeoui.github.io/
+      run: npm run build -- --configuration production --base-href https://cosmicworlds.live/
       
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3
