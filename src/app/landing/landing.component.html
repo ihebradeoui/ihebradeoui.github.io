@@ -1,0 +1,460 @@
+<div class="landing-wrapper">
+
+  <!-- ── Navigation ── -->
+  <nav class="site-nav">
+    <a routerLink="/" class="nav-brand">🌌 CosmicWorlds</a>
+    <div class="nav-links">
+      <a routerLink="/">Home</a>
+      <a routerLink="/play">Explorer</a>
+      <a routerLink="/about">About</a>
+      <a routerLink="/privacy-policy">Privacy Policy</a>
+    </div>
+    <a routerLink="/play" class="nav-cta">🚀 Launch</a>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <header class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">🌌 Real-time 3D Space Exploration</div>
+      <h1>Explore, Claim &amp; Customise<br>Your Own Planets</h1>
+      <p class="hero-desc">
+        CosmicWorlds is a free, browser-based interactive solar system where every planet
+        belongs to a real person. Fly through beautifully rendered galaxies, claim a planet,
+        give it your name, and compete on the global leaderboard — all in real time.
+      </p>
+      <div class="hero-actions">
+        <a routerLink="/play" class="btn-primary">🚀 Launch Explorer</a>
+        <a routerLink="/about" class="btn-secondary">Learn More</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><strong>6</strong><span>Galaxies</span></div>
+        <div class="stat"><strong>20+</strong><span>Planet Types</span></div>
+        <div class="stat"><strong>20</strong><span>Customisations</span></div>
+        <div class="stat"><strong>Free</strong><span>to Play</span></div>
+      </div>
+    </div>
+    <div class="hero-visual" aria-hidden="true">
+      <div class="orbit orbit-1">
+        <div class="planet p1">🌍</div>
+      </div>
+      <div class="orbit orbit-2">
+        <div class="planet p2">🪐</div>
+      </div>
+      <div class="orbit orbit-3">
+        <div class="planet p3">🔴</div>
+      </div>
+      <div class="sun">☀️</div>
+    </div>
+  </header>
+
+  <!-- ── AdSense Banner ── -->
+  <div class="ad-unit-wrapper ad-top" aria-label="Advertisement">
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-4685187700153873"
+         data-ad-slot="auto"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+  </div>
+
+  <!-- ── Features ── -->
+  <section class="section features-section">
+    <h2 class="section-title">Everything You Need to Rule the Galaxy</h2>
+    <p class="section-subtitle">
+      CosmicWorlds combines real-time multiplayer interaction with a rich 3D space simulation
+      powered by Babylon.js and Firebase. Here's what you can do.
+    </p>
+    <div class="features-grid">
+
+      <article class="feature-card">
+        <div class="feature-icon">🌍</div>
+        <h3>Interactive 3D Solar Systems</h3>
+        <p>
+          Navigate through multiple hand-crafted galaxies rendered with WebGL. Each solar system
+          features a glowing star at the centre, planets with realistic inclined orbits, and a
+          star-field backdrop. Drag to rotate the camera, scroll or pinch to zoom, and click any
+          planet to inspect or claim it.
+        </p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-icon">✏️</div>
+        <h3>Claim &amp; Name Your Planet</h3>
+        <p>
+          Register a free account, earn credits by watching brief ads, then rent a planet for
+          one week. Once rented, you can give it any name and description you like. Your planet
+          shows your identity to every visitor — cementing your place in this shared universe.
+        </p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-icon">🎨</div>
+        <h3>20+ Visual Customisations</h3>
+        <p>
+          Stand out from the crowd with unique visual effects. Add cosmic rings, a pulsing star
+          aura, an orbiting moon companion, a crystalline energy shield, or a roaring flame shell.
+          Choose up to two effects at once — more slots unlock as you build your daily streak.
+        </p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-icon">🏆</div>
+        <h3>Global Leaderboard</h3>
+        <p>
+          The planet leaderboard ranks every claimed planet by how long it has been held. The
+          longer you keep renewing your planet, the higher you climb. Daily visitors compete to
+          hold legendary planet names and prove their cosmic dominance.
+        </p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-icon">🔥</div>
+        <h3>Daily Login Streaks</h3>
+        <p>
+          Return to CosmicWorlds every day to build your streak counter. A longer streak unlocks
+          additional customisation slots, letting you layer more visual effects on your planet.
+          Missing a day resets your streak, so staying engaged is always rewarded.
+        </p>
+      </article>
+
+      <article class="feature-card">
+        <div class="feature-icon">🎵</div>
+        <h3>Ambient Space Soundtrack</h3>
+        <p>
+          An immersive procedural music engine generates a real-time space melody using the
+          Web Audio API. The soundtrack adapts as you navigate the galaxy, creating a unique
+          atmospheric experience that pulls you deeper into the cosmos.
+        </p>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ── How It Works ── -->
+  <section class="section how-section">
+    <h2 class="section-title">How It Works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Explore the Galaxy</h3>
+        <p>
+          Open the 3D Explorer and fly through our solar systems. No account needed — just
+          drag, zoom, and click planets to see who owns them and read their stories.
+        </p>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Create a Free Account</h3>
+        <p>
+          Sign up with just an email address. Your account tracks your credits balance,
+          streak counter, and which planets you currently own. All data is stored securely
+          with Firebase Authentication.
+        </p>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Earn Credits &amp; Rent a Planet</h3>
+        <p>
+          Watch short ads to earn credits (10 per ad). Once you have 50 credits, you can
+          rent any unclaimed planet for one full week. Rename it, describe it, and deck it
+          out with stunning visual effects.
+        </p>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h3>Claim the Leaderboard</h3>
+        <p>
+          Keep renewing your planet to climb the global leaderboard. Log in daily to extend
+          your streak, unlock extra customisation slots, and defend your position at the top
+          of the CosmicWorlds rankings.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Planet Types Encyclopedia ── -->
+  <section class="section encyclopedia-section">
+    <h2 class="section-title">Planet Types &amp; Shapes</h2>
+    <p class="section-subtitle">
+      CosmicWorlds features planets in seven distinct shapes and a wide variety of colours,
+      from icy blue worlds to volcanic red giants. Explore them all in the 3D Explorer.
+    </p>
+    <div class="planet-grid">
+
+      <div class="planet-type-card">
+        <div class="pt-icon">🌐</div>
+        <h3>Sphere Planets</h3>
+        <p>
+          The classic spherical world. Smooth, perfectly rounded planets that range from
+          tiny rocky moons to gas giants many times the size of Earth. Most habitable worlds
+          in the galaxy take this familiar form.
+        </p>
+      </div>
+
+      <div class="planet-type-card">
+        <div class="pt-icon">🪐</div>
+        <h3>Ringed Worlds</h3>
+        <p>
+          Add the Cosmic Rings customisation to any sphere planet and watch vibrant
+          multicoloured bands shimmer around its equator — inspired by Saturn's iconic
+          ring system, but cranked up to full galactic glory.
+        </p>
+      </div>
+
+      <div class="planet-type-card">
+        <div class="pt-icon">🎲</div>
+        <h3>Cube Planets</h3>
+        <p>
+          Defying natural physics, cube planets are mysterious crystalline worlds with
+          flat facets and sharp edges. Ancient lore suggests they were forged by an
+          extinct civilisation that worshipped geometric perfection.
+        </p>
+      </div>
+
+      <div class="planet-type-card">
+        <div class="pt-icon">🍩</div>
+        <h3>Torus Worlds</h3>
+        <p>
+          A donut-shaped planet with a hollow centre. Torus worlds have bizarre day/night
+          cycles and extreme weather at their inner curves. Settlements cling to the outer
+          equatorial band where gravity is most stable.
+        </p>
+      </div>
+
+      <div class="planet-type-card">
+        <div class="pt-icon">⬡</div>
+        <h3>Octahedron Planets</h3>
+        <p>
+          Eight triangular faces make up this diamond-shaped world. Octahedron planets
+          refract starlight in mesmerising ways, casting prismatic patterns across the
+          orbital plane and dazzling all who fly nearby.
+        </p>
+      </div>
+
+      <div class="planet-type-card">
+        <div class="pt-icon">🔷</div>
+        <h3>Icosahedron Planets</h3>
+        <p>
+          Twenty triangular faces give this world an almost spherical appearance, yet
+          up close its angular facets are unmistakable. Icosahedron planets are home to
+          the galaxy's most advanced mathematical cultures.
+        </p>
+      </div>
+
+      <div class="planet-type-card">
+        <div class="pt-icon">🧱</div>
+        <h3>Cylinder Worlds</h3>
+        <p>
+          Long, cylindrical planets spin rapidly to simulate gravity on their inner
+          surface — a favourite of deep-space colonists who need a predictable living
+          environment far from any star's warmth.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── AdSense mid-page ── -->
+  <div class="ad-unit-wrapper ad-mid" aria-label="Advertisement">
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-4685187700153873"
+         data-ad-slot="auto"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+  </div>
+
+  <!-- ── Space Facts ── -->
+  <section class="section facts-section">
+    <h2 class="section-title">Cosmic Facts &amp; Inspiration</h2>
+    <p class="section-subtitle">
+      CosmicWorlds draws inspiration from real astronomy and space science. Here are some of the
+      fascinating facts that shaped the design of the game.
+    </p>
+    <div class="facts-grid">
+
+      <div class="fact-card">
+        <div class="fact-icon">☀️</div>
+        <h3>The Sun Contains 99.86% of the Solar System's Mass</h3>
+        <p>
+          Every CosmicWorlds solar system places a massive glowing sun at its centre.
+          In reality, our own Sun is so massive that all the planets, moons, asteroids,
+          and comets combined account for only 0.14% of the total mass of our solar system.
+          Jupiter alone makes up most of that remainder.
+        </p>
+      </div>
+
+      <div class="fact-card">
+        <div class="fact-icon">🌍</div>
+        <h3>Orbital Inclination Creates Seasons</h3>
+        <p>
+          In CosmicWorlds, each planet orbit has a unique inclination angle, just like
+          real planets. Earth's axis is tilted 23.5° relative to its orbital plane, which
+          is why we experience seasons. Mars is tilted 25.2°, giving it similar seasons
+          but lasting twice as long due to its longer year.
+        </p>
+      </div>
+
+      <div class="fact-card">
+        <div class="fact-icon">🪐</div>
+        <h3>Saturn's Rings Are Only 10–100 Metres Thick</h3>
+        <p>
+          Despite spanning up to 282,000 km in diameter, Saturn's rings are incredibly
+          thin — in most places only 10 to 100 metres thick. They consist mostly of ice
+          particles, rocky debris, and dust. CosmicWorlds' Cosmic Rings customisation is
+          inspired by this stunning natural phenomenon.
+        </p>
+      </div>
+
+      <div class="fact-card">
+        <div class="fact-icon">🌌</div>
+        <h3>The Milky Way Contains 100–400 Billion Stars</h3>
+        <p>
+          CosmicWorlds features six explorable galaxies, each with its own unique solar
+          system. The real Milky Way contains an estimated 100 to 400 billion stars —
+          with the majority thought to host at least one planet. The number of potentially
+          habitable worlds in our galaxy alone runs into the billions.
+        </p>
+      </div>
+
+      <div class="fact-card">
+        <div class="fact-icon">⚡</div>
+        <h3>Lightning on Jupiter Strikes Three Times as Powerfully</h3>
+        <p>
+          Jupiter's atmospheric lightning bolts are estimated to be about three times
+          more energetic than Earth's. The planet's deep storms can be larger than the
+          entire Earth. The Plasma Sparks customisation in CosmicWorlds pays homage to
+          these awe-inspiring electrical storms.
+        </p>
+      </div>
+
+      <div class="fact-card">
+        <div class="fact-icon">🔴</div>
+        <h3>Mars Has the Tallest Volcano in the Solar System</h3>
+        <p>
+          Olympus Mons on Mars stands approximately 22 km high — nearly three times the
+          height of Mount Everest. It is a shield volcano with a caldera 80 km wide.
+          The volcanic red-orange colour palette in CosmicWorlds references Mars and other
+          known rocky, volcanic exoplanets discovered by telescopes like Kepler and TESS.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── FAQ ── -->
+  <section class="section faq-section">
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <h3>Is CosmicWorlds free to play?</h3>
+        <p>
+          Yes, completely free. You can explore all the solar systems and view planet details
+          without an account. To claim and customise your own planet you need a free account
+          and some in-app credits, which you earn by watching short ads.
+        </p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What browser do I need?</h3>
+        <p>
+          Any modern browser that supports WebGL 2.0 will work — including the latest versions
+          of Chrome, Firefox, Edge, and Safari. For the best experience we recommend Chrome or
+          Edge on a desktop or laptop. The app is also playable on mobile, though a desktop
+          screen gives you the best view of the solar systems.
+        </p>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I earn credits?</h3>
+        <p>
+          Sign in to your account, click any planet, then tap the "📺 Watch Ad for Credits"
+          button. Each ad you watch awards 10 credits. You need 50 credits to rent a planet
+          for one week, and 10 credits each time you save changes to a planet you already rent.
+        </p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What happens when my planet rental expires?</h3>
+        <p>
+          After one week your rental expires and the planet becomes available for others to
+          claim. You can renew your rental at any time using 50 credits before the expiry date
+          to ensure you keep hold of your world uninterrupted.
+        </p>
+      </div>
+
+      <div class="faq-item">
+        <h3>How does the leaderboard work?</h3>
+        <p>
+          The leaderboard ranks every planet that currently has a name by how many days the
+          name has been set. The counter starts from the moment you first rename a planet and
+          keeps ticking as long as you keep renewing your rental. The player at #1 has held
+          their planet name for the most days.
+        </p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can I choose which planet shape I get?</h3>
+        <p>
+          Planet shapes are assigned by the galaxy seed and cannot be changed — each planet
+          has a fixed shape that is the same for all visitors. However you can choose any
+          available planet of the shape you prefer by exploring the solar systems until you
+          find one you like and it's unoccupied (or you can outbid the current occupant
+          once rentals expire).
+        </p>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I build a streak?</h3>
+        <p>
+          Simply sign in to CosmicWorlds at least once every 24 hours. Each consecutive day
+          you log in adds one to your streak counter. At certain streak milestones (7 days,
+          14 days, 30 days) you unlock an extra customisation slot, letting you apply more
+          visual effects to your planets simultaneously.
+        </p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is my data safe?</h3>
+        <p>
+          Your account is secured with Firebase Authentication. We only store your email,
+          hashed password, and the planet data you choose to create. We never sell your
+          personal information. For full details, see our <a routerLink="/privacy-policy">Privacy Policy</a>.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="section cta-section">
+    <h2>Ready to Claim Your Corner of the Universe?</h2>
+    <p>
+      Join thousands of explorers who have already named their planets, built their streaks,
+      and etched their legacy into the CosmicWorlds leaderboard. Your galaxy awaits.
+    </p>
+    <a routerLink="/play" class="btn-primary btn-large">🚀 Start Exploring — It's Free</a>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="footer-logo">🌌</span>
+        <span>CosmicWorlds</span>
+      </div>
+      <nav class="footer-nav">
+        <a routerLink="/">Home</a>
+        <a routerLink="/play">Explorer</a>
+        <a routerLink="/about">About</a>
+        <a routerLink="/privacy-policy">Privacy Policy</a>
+      </nav>
+      <p class="footer-copy">© 2025 CosmicWorlds. All rights reserved.</p>
+    </div>
+  </footer>
+
+</div>

@@ -7,6 +7,7 @@ import { NotFoundComponent } from './not-found/not-found.component';
 import { PlanetsComponent } from './planets/planets.component';
 import { PrivacyPolicyComponent } from './privacy-policy/privacy-policy.component';
 import { AboutComponent } from './about/about.component';
+import { LandingComponent } from './landing/landing.component';
 import { initializeApp,provideFirebaseApp } from '@angular/fire/app';
 import { environment } from '../environments/environment';
 import { provideAuth,getAuth } from '@angular/fire/auth';
@@ -24,7 +25,8 @@ import { FormsModule} from '@angular/forms';
     NotFoundComponent,
     PlanetsComponent,
     PrivacyPolicyComponent,
-    AboutComponent
+    AboutComponent,
+    LandingComponent
   ],
   imports: [
     FormsModule,
