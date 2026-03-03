@@ -1,0 +1,103 @@
+<div class="page-wrapper">
+  <nav class="site-nav">
+    <a routerLink="/" class="nav-brand">🌌 CosmicWorlds</a>
+    <div class="nav-links">
+      <a routerLink="/">Home</a>
+      <a routerLink="/about" class="active">About</a>
+      <a routerLink="/privacy-policy">Privacy Policy</a>
+    </div>
+  </nav>
+
+  <main class="page-content">
+    <h1>About CosmicWorlds</h1>
+    <p class="subtitle">An interactive 3D solar system you can make your own</p>
+
+    <section>
+      <h2>What is CosmicWorlds?</h2>
+      <p>
+        CosmicWorlds is a browser-based, real-time 3D planetary explorer powered by
+        <a href="https://www.babylonjs.com/" target="_blank" rel="noopener">Babylon.js</a>.
+        Visitors can fly through beautifully rendered solar systems, claim and name planets,
+        customise them with unique visual effects, and compete on the leaderboard for the
+        longest-held planet name.
+      </p>
+      <p>
+        Everything happens live — planet names, descriptions and visual customisations are
+        stored in a shared Firebase database, so every visitor sees the same universe in
+        real time.
+      </p>
+    </section>
+
+    <section>
+      <h2>Features</h2>
+      <ul>
+        <li>
+          <strong>🌍 Interactive 3D Solar Systems</strong> — Explore multiple galaxies with
+          realistically inclined orbits, a glowing sun, and planets of various shapes and sizes.
+        </li>
+        <li>
+          <strong>✏️ Claim &amp; Customise Planets</strong> — Register a free account, rent a
+          planet with in-app credits, and personalise it with a name, description, and one of
+          20+ visual effects including rings, auras, moons, and particle effects.
+        </li>
+        <li>
+          <strong>🏆 Leaderboard</strong> — The leaderboard tracks which planet names have been
+          held the longest, rewarding dedicated explorers.
+        </li>
+        <li>
+          <strong>🔥 Daily Streaks</strong> — Log in every day to build a streak and unlock
+          extra customisation slots.
+        </li>
+        <li>
+          <strong>🎵 Ambient Soundtrack</strong> — An immersive procedural music engine
+          generates a unique space melody using the Web Audio API.
+        </li>
+        <li>
+          <strong>📱 Responsive Design</strong> — Fully playable on desktop, tablet, and mobile
+          browsers with touch support.
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Technology Stack</h2>
+      <ul>
+        <li><strong>Frontend:</strong> Angular 13, TypeScript, SCSS</li>
+        <li><strong>3D Engine:</strong> Babylon.js — WebGL-powered rendering</li>
+        <li><strong>Backend &amp; Auth:</strong> Google Firebase (Realtime Database + Authentication)</li>
+        <li><strong>Hosting:</strong> GitHub Pages with automated CI/CD via GitHub Actions</li>
+        <li><strong>Ads:</strong> Google AdSense</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>How to Play</h2>
+      <ol>
+        <li>Visit the home page — the interactive solar system loads automatically.</li>
+        <li>Drag to rotate the camera, scroll or pinch to zoom in and out.</li>
+        <li>Click any planet to view its details. If it is unclaimed, you can claim it!</li>
+        <li>Create a free account to earn credits by watching ads, then rent a planet to
+            give it your own name and visual theme.</li>
+        <li>Return daily to build your streak and unlock additional customisation slots.</li>
+        <li>Check the leaderboard (🏆 button) to see who owns the most iconic planets.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Open Source</h2>
+      <p>
+        CosmicWorlds is open source. The full source code is available on
+        <a href="https://github.com/ihebradeoui/ihebradeoui.github.io" target="_blank" rel="noopener">GitHub</a>.
+        Bug reports and feature requests are welcome via the issue tracker.
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>© 2025 CosmicWorlds &nbsp;·&nbsp;
+      <a routerLink="/">Home</a> &nbsp;·&nbsp;
+      <a routerLink="/about">About</a> &nbsp;·&nbsp;
+      <a routerLink="/privacy-policy">Privacy Policy</a>
+    </p>
+  </footer>
+</div>

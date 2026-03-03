@@ -5,6 +5,8 @@ import { AppComponent } from './app.component';
 import { HomeComponent } from './home/home.component';
 import { NotFoundComponent } from './not-found/not-found.component';
 import { PlanetsComponent } from './planets/planets.component';
+import { PrivacyPolicyComponent } from './privacy-policy/privacy-policy.component';
+import { AboutComponent } from './about/about.component';
 import { initializeApp,provideFirebaseApp } from '@angular/fire/app';
 import { environment } from '../environments/environment';
 import { provideAuth,getAuth } from '@angular/fire/auth';
@@ -20,7 +22,9 @@ import { FormsModule} from '@angular/forms';
     AppComponent,
     HomeComponent,
     NotFoundComponent,
-    PlanetsComponent
+    PlanetsComponent,
+    PrivacyPolicyComponent,
+    AboutComponent
   ],
   imports: [
     FormsModule,

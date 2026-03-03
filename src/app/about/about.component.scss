@@ -1,0 +1,20 @@
+/* Reuse the same page styles as privacy-policy */
+@import '../privacy-policy/privacy-policy.component.scss';
+
+/* About-specific overrides */
+.subtitle {
+  font-size: 17px;
+  color: #9990dd;
+  margin-bottom: 32px;
+  font-style: italic;
+}
+
+ol {
+  padding-left: 22px;
+  li {
+    line-height: 1.75;
+    color: #ccc5f0;
+    font-size: 15px;
+    margin-bottom: 8px;
+  }
+}

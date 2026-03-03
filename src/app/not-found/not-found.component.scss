@@ -1,5 +1,108 @@
-canvas{
-    position: absolute;
-    height: 100%;
-    width: 100%;
+:host {
+  display: block;
+  min-height: 100vh;
+  background: #0a0e1a;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow-y: auto;
+}
+
+.not-found-wrapper {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Navigation ── */
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 32px;
+  background: rgba(10, 14, 26, 0.95);
+  border-bottom: 1px solid rgba(138, 127, 255, 0.25);
+  backdrop-filter: blur(8px);
+}
+
+.nav-brand {
+  font-size: 20px;
+  font-weight: 700;
+  text-decoration: none;
+  background: linear-gradient(135deg, #8a7fff, #b8b8ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+  a {
+    color: #bbb4e8;
+    text-decoration: none;
+    font-size: 14px;
+    &:hover { color: #fff; }
+  }
+}
+
+/* ── Main ── */
+.not-found-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.error-code {
+  font-size: 120px;
+  font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(135deg, #6a5acd, #b8b8ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+  letter-spacing: -4px;
+}
+
+h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #e0d9ff;
+  margin: 0 0 12px;
+}
+
+p {
+  font-size: 16px;
+  color: #9990dd;
+  margin-bottom: 32px;
+}
+
+.home-btn {
+  display: inline-block;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, #6a5acd 0%, #8a7fff 100%);
+  color: #fff;
+  text-decoration: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  transition: opacity 0.2s, transform 0.2s;
+  &:hover { opacity: 0.9; transform: translateY(-2px); }
+}
+
+/* ── Footer ── */
+.site-footer {
+  padding: 20px 32px;
+  text-align: center;
+  border-top: 1px solid rgba(138, 127, 255, 0.2);
+  font-size: 13px;
+  color: #8880c0;
+  a {
+    color: #9990dd;
+    text-decoration: none;
+    &:hover { color: #e0d9ff; }
+  }
 }
