@@ -16,6 +16,8 @@ import { AngularFireDatabaseModule } from '@angular/fire/compat/database';
 import { AngularFireModule } from '@angular/fire/compat';
 import { HttpClientModule } from '@angular/common/http';
 import { FormsModule} from '@angular/forms';
+import { ContactComponent } from './contact/contact.component';
+import { TermsComponent } from './terms/terms.component';
 
 
 @NgModule({
@@ -26,7 +28,9 @@ import { FormsModule} from '@angular/forms';
     PlanetsComponent,
     PrivacyPolicyComponent,
     AboutComponent,
-    LandingComponent
+    LandingComponent,
+    ContactComponent,
+    TermsComponent
   ],
   imports: [
     FormsModule,
