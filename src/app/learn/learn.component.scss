@@ -1,0 +1,61 @@
+@import '../privacy-policy/privacy-policy.component.scss';
+
+.subtitle {
+  font-size: 16px;
+  color: #a8a0de;
+  margin-bottom: 28px;
+}
+
+.planet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.planet-card {
+  text-align: left;
+  border: 1px solid rgba(138, 127, 255, 0.24);
+  background: rgba(138, 127, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px;
+  color: #e0d9ff;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(176, 168, 255, 0.6);
+    background: rgba(138, 127, 255, 0.14);
+  }
+
+  &.selected {
+    border-color: #8a7fff;
+    background: rgba(138, 127, 255, 0.2);
+  }
+}
+
+.planet-emoji {
+  display: block;
+  font-size: 24px;
+  margin-bottom: 6px;
+}
+
+.planet-name {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.planet-subtitle {
+  display: block;
+  font-size: 13px;
+  color: #bdb5e8;
+}
+
+.planet-details {
+  border: 1px solid rgba(138, 127, 255, 0.22);
+  background: rgba(10, 14, 26, 0.65);
+  border-radius: 12px;
+  padding: 18px;
+}

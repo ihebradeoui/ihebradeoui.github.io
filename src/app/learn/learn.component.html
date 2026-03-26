@@ -1,0 +1,54 @@
+<div class="page-wrapper">
+  <nav class="site-nav">
+    <a routerLink="/" class="nav-brand">🌌 CosmicWorlds</a>
+    <div class="nav-links">
+      <a routerLink="/">Home</a>
+      <a routerLink="/play">Explorer</a>
+      <a routerLink="/learn" class="active">Learn</a>
+      <a routerLink="/about">About</a>
+      <a routerLink="/privacy-policy">Privacy Policy</a>
+      <a routerLink="/contact">Contact</a>
+    </div>
+  </nav>
+
+  <main class="page-content">
+    <h1>Learn the Solar System</h1>
+    <p class="subtitle">
+      Click a planet card to discover quick facts about distance, day length, year length, and more.
+    </p>
+
+    <section class="planet-grid" aria-label="Solar system planets">
+      <button
+        *ngFor="let planet of planets"
+        type="button"
+        class="planet-card"
+        [class.selected]="selectedPlanet.name === planet.name"
+        (click)="selectPlanet(planet)"
+      >
+        <span class="planet-emoji" aria-hidden="true">{{ planet.emoji }}</span>
+        <span class="planet-name">{{ planet.name }}</span>
+        <span class="planet-subtitle">{{ planet.subtitle }}</span>
+      </button>
+    </section>
+
+    <section class="planet-details" *ngIf="selectedPlanet">
+      <h2>{{ selectedPlanet.emoji }} {{ selectedPlanet.name }}</h2>
+      <ul>
+        <li><strong>Distance from Sun:</strong> {{ selectedPlanet.distanceFromSun }}</li>
+        <li><strong>Length of Day:</strong> {{ selectedPlanet.dayLength }}</li>
+        <li><strong>Length of Year:</strong> {{ selectedPlanet.yearLength }}</li>
+      </ul>
+      <p><strong>Fun fact:</strong> {{ selectedPlanet.funFact }}</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>© 2025 CosmicWorlds &nbsp;·&nbsp;
+      <a routerLink="/">Home</a> &nbsp;·&nbsp;
+      <a routerLink="/play">Explorer</a> &nbsp;·&nbsp;
+      <a routerLink="/learn">Learn</a> &nbsp;·&nbsp;
+      <a routerLink="/about">About</a> &nbsp;·&nbsp;
+      <a routerLink="/privacy-policy">Privacy Policy</a>
+    </p>
+  </footer>
+</div>
