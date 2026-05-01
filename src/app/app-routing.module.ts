@@ -6,14 +6,20 @@ import { PlanetsComponent } from './planets/planets.component';
 import { PrivacyPolicyComponent } from './privacy-policy/privacy-policy.component';
 import { AboutComponent } from './about/about.component';
 import { LandingComponent } from './landing/landing.component';
+import { ContactComponent } from './contact/contact.component';
+import { TermsComponent } from './terms/terms.component';
+import { LearnComponent } from './learn/learn.component';
 
 const routes: Routes = [
   {path: '', component: LandingComponent},
   {path: 'play', component: PlanetsComponent},
   {path: 'home', component: HomeComponent},
   {path: 'planets', redirectTo: 'play', pathMatch: 'full'},
+  {path: 'learn', component: LearnComponent},
   {path: 'about', component: AboutComponent},
   {path: 'privacy-policy', component: PrivacyPolicyComponent},
+  {path: 'contact', component: ContactComponent},
+  {path: 'terms', component: TermsComponent},
   {path: '**', component: NotFoundComponent}
 ];
 
