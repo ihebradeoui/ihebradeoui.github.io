@@ -305,6 +305,12 @@ export class PlanetScene {
     return scene;
   }
 
+  /**
+   * Enables HDR image-based lighting (IBL) for PBR materials.
+   *
+   * Expected asset: `assets/pbr/environment.env` (prefiltered environment).
+   * This file can be generated from an HDRI using Babylon's environment tools.
+   */
   private setupEnvironmentIBL(scene: Scene): void {
     // Use a prefiltered `.env` file if available (best for PBR performance/quality).
     try {
@@ -1047,7 +1053,9 @@ export class PlanetScene {
   }
 
   private addAtmosphereLayer(planet: Mesh, data: PlanetData): Mesh {
-    // Thin glow shell (additive) approximating atmospheric scattering.
+    // Atmospheric scattering approximation:
+    // Render a slightly larger shell with additive blending, and use Fresnel to
+    // brighten the limb (edge) more than the center.
     const radius = data.size / 2;
     const atmo = MeshBuilder.CreateSphere(
       `${planet.name}_atmosphere`,
@@ -1084,8 +1092,9 @@ export class PlanetScene {
   }
 
   private addCloudLayer(planet: Mesh, data: PlanetData): Mesh {
-    // Simple rotating cloud shell: procedural alpha-noise texture.
-    // Kept lightweight: one dynamic texture + slow rotation.
+    // Cloud shell:
+    // A second, slightly larger sphere with an alpha noise texture.
+    // For real 4K cloud maps, replace the DynamicTexture with `new Texture(...)`.
     const clouds = MeshBuilder.CreateSphere(
       `${planet.name}_clouds`,
       { diameter: data.size * 1.025, segments: 96 },
