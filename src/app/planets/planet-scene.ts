@@ -29,6 +29,7 @@ import {
   DirectionalLight,
   ShadowGenerator,
   ImageProcessingConfiguration,
+  FresnelParameters,
 } from '@babylonjs/core';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
@@ -968,6 +969,12 @@ export class PlanetScene {
 
     planet.material = material;
 
+    // Atmosphere + clouds (for spherical planets only)
+    if (shape === 'sphere') {
+      this.addAtmosphereLayer(planet, data);
+      this.addCloudLayer(planet, data);
+    }
+
     // Store actual radius for later use
     data.actualRadius = data.size / 2;
 
@@ -1029,6 +1036,95 @@ export class PlanetScene {
     this.planetDataMap.set(id, data);
 
     return planet;
+  }
+
+  private addAtmosphereLayer(planet: Mesh, data: PlanetData): void {
+    // Thin glow shell (additive) approximating atmospheric scattering.
+    const radius = data.size / 2;
+    const atmo = MeshBuilder.CreateSphere(
+      `${planet.name}_atmosphere`,
+      { diameter: data.size * 1.06, segments: 96 },
+      this.scene,
+    );
+    atmo.parent = planet;
+    atmo.isPickable = false;
+
+    const atmoMat = new StandardMaterial(`${planet.name}_atmoMat`, this.scene);
+    atmoMat.backFaceCulling = false;
+    atmoMat.alpha = 0.9;
+    atmoMat.alphaMode = Engine.ALPHA_ADD;
+    atmoMat.disableLighting = false;
+    atmoMat.emissiveColor = Color3.FromHexString(data.color).scale(0.35);
+    atmoMat.diffuseColor = Color3.Black();
+    atmoMat.specularColor = Color3.Black();
+
+    // Fresnel makes the shell brighter on the limb (edge) and darker in the center.
+    const fresnel = new FresnelParameters();
+    fresnel.bias = 0.1;
+    fresnel.power = 4.0;
+    fresnel.leftColor = Color3.Black();
+    fresnel.rightColor = Color3.White();
+    atmoMat.emissiveFresnelParameters = fresnel;
+
+    atmo.material = atmoMat;
+
+    if (this.glowLayer) {
+      this.glowLayer.addIncludedOnlyMesh(atmo);
+    }
+
+    // Let the atmosphere receive sun shadows softly (adds realism at terminator).
+    atmo.receiveShadows = false;
+  }
+
+  private addCloudLayer(planet: Mesh, data: PlanetData): void {
+    // Simple rotating cloud shell: procedural alpha-noise texture.
+    // Kept lightweight: one dynamic texture + slow rotation.
+    const clouds = MeshBuilder.CreateSphere(
+      `${planet.name}_clouds`,
+      { diameter: data.size * 1.025, segments: 96 },
+      this.scene,
+    );
+    clouds.parent = planet;
+    clouds.isPickable = false;
+
+    const cloudsMat = new PBRMaterial(`${planet.name}_cloudMat`, this.scene);
+    cloudsMat.metallic = 0;
+    cloudsMat.roughness = 1;
+    cloudsMat.alpha = 0.55;
+    cloudsMat.alphaMode = Engine.ALPHA_COMBINE;
+    cloudsMat.emissiveColor = new Color3(0.15, 0.18, 0.22);
+    cloudsMat.environmentIntensity = 0.15;
+
+    const cloudTex = new DynamicTexture(`${planet.name}_cloudTex`, 512, this.scene, false);
+    const ctx = cloudTex.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 512, 512);
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Cheap fractal-ish noise using many blurred circles.
+    for (let i = 0; i < 900; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const r = 6 + Math.random() * 28;
+      const a = 0.025 + Math.random() * 0.07;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,255,255,${a})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    cloudTex.update();
+
+    cloudsMat.opacityTexture = cloudTex;
+    cloudsMat.albedoColor = new Color3(1, 1, 1);
+    cloudsMat.useAlphaFromAlbedoTexture = false;
+
+    clouds.material = cloudsMat;
+
+    // Slow cloud rotation.
+    this.scene.registerBeforeRender(() => {
+      clouds.rotation.y += 0.0008;
+    });
   }
 
   private createPlanetTexture(
