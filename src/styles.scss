@@ -7,6 +7,12 @@ body, html {
     background-color: #000000;
 }
 
+app-root {
+    display: block;
+    min-height: 100vh;
+    background-color: #000000;
+}
+
 /* Canvas-based views need overflow hidden; text pages need to scroll.
    Each component manages overflow via :host or wrapper styles. */
 body.canvas-page {
