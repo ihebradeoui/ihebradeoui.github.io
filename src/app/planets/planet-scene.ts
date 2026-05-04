@@ -119,6 +119,7 @@ export class PlanetScene {
   private sunLight: DirectionalLight | null = null;
   private sunShadowGenerator: ShadowGenerator | null = null;
   private cinematicPipeline: DefaultRenderingPipeline | null = null;
+  private enableDepthOfField: boolean = false;
   private animationCallbacks: (() => void)[] = [];
   private meteorParticleSystems: ParticleSystem[] = [];
   private meteorInterval: number | null = null;
@@ -594,12 +595,15 @@ export class PlanetScene {
       pipeline.imageProcessing.contrast  = 1.25;
       pipeline.imageProcessing.exposure  = 1.05;
 
-      // Depth of field — subtle cinematic focus.
-      pipeline.depthOfFieldEnabled = true;
-      pipeline.depthOfFieldBlurLevel = 0;
-      pipeline.depthOfField.fStop = 2.8;
-      pipeline.depthOfField.focalLength = 60;
-      pipeline.depthOfField.focusDistance = 2500;
+      // Depth of field can read as "blurry" on wide scenes.
+      // Keep it OFF by default; it will be enabled when you want a cinematic focus pull.
+      pipeline.depthOfFieldEnabled = this.enableDepthOfField;
+      if (pipeline.depthOfFieldEnabled) {
+        pipeline.depthOfFieldBlurLevel = 0;
+        pipeline.depthOfField.fStop = 2.8;
+        pipeline.depthOfField.focalLength = 60;
+        pipeline.depthOfField.focusDistance = 2500;
+      }
 
       this.cinematicPipeline = pipeline;
 
@@ -611,14 +615,24 @@ export class PlanetScene {
   }
 
   private createSpaceSkybox(scene: Scene): void {
-    // Deep-space black skybox — stars rendered via particles for full 3-D depth
+    // Galactic skybox (nebula) + stars rendered via particles for full 3-D depth
     const skybox = MeshBuilder.CreateBox('skybox', { size: 2000 }, scene);
     const skyboxMaterial = new StandardMaterial('skyboxMaterial', scene);
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.disableLighting = true;
-    skyboxMaterial.emissiveColor = new Color3(0, 0, 0);
+    skyboxMaterial.emissiveColor = new Color3(1, 1, 1);
     skyboxMaterial.diffuseColor  = new Color3(0, 0, 0);
     skyboxMaterial.specularColor = new Color3(0, 0, 0);
+
+    try {
+      const nebula = new Texture('/assets/home/bg.jpg', scene, true, false);
+      nebula.wrapU = Texture.CLAMP_ADDRESSMODE;
+      nebula.wrapV = Texture.CLAMP_ADDRESSMODE;
+      skyboxMaterial.emissiveTexture = nebula;
+    } catch (_e) {
+      // fallback: keep black if texture unavailable
+      skyboxMaterial.emissiveColor = new Color3(0, 0, 0);
+    }
 
     // Environment IBL is configured in setupEnvironmentIBL().
 
