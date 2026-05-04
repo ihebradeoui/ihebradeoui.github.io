@@ -624,8 +624,9 @@ export class PlanetScene {
     skyboxMaterial.diffuseColor  = new Color3(0, 0, 0);
     skyboxMaterial.specularColor = new Color3(0, 0, 0);
 
+    // NOTE: use a relative asset path (Angular may be deployed under a sub-path).
     try {
-      const nebula = new Texture('/assets/home/bg.jpg', scene, true, false);
+      const nebula = new Texture('assets/home/bg.jpg', scene, true, false);
       nebula.wrapU = Texture.CLAMP_ADDRESSMODE;
       nebula.wrapV = Texture.CLAMP_ADDRESSMODE;
       skyboxMaterial.emissiveTexture = nebula;
