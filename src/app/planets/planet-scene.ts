@@ -899,10 +899,11 @@ export class PlanetScene {
         break;
       case 'sphere':
       default:
-        // Create planet sphere with ULTRA HIGH detail for Unreal Engine 5 style appearance
+        // Create planet sphere with high detail for cinematic look.
+        // (Keep segments bounded for performance on mid-range GPUs.)
         planet = MeshBuilder.CreateSphere(
           id,
-          { diameter: data.size, segments: 256 }, // Increased to 256 for ultra high poly look
+          { diameter: data.size, segments: 128 },
           this.scene,
         );
         break;
@@ -969,10 +970,17 @@ export class PlanetScene {
 
     planet.material = material;
 
+    // Shadows: only enable for reasonably sized/close planets.
+    planet.receiveShadows = true;
+    this.sunShadowGenerator?.addShadowCaster(planet, true);
+
     // Atmosphere + clouds (for spherical planets only)
     if (shape === 'sphere') {
-      this.addAtmosphereLayer(planet, data);
-      this.addCloudLayer(planet, data);
+      const atmo = this.addAtmosphereLayer(planet, data);
+      const clouds = this.addCloudLayer(planet, data);
+      this.sunShadowGenerator?.addShadowCaster(clouds, true);
+      // Atmosphere is additive glow; don't cast/receive shadows.
+      atmo.receiveShadows = false;
     }
 
     // Store actual radius for later use
@@ -1038,7 +1046,7 @@ export class PlanetScene {
     return planet;
   }
 
-  private addAtmosphereLayer(planet: Mesh, data: PlanetData): void {
+  private addAtmosphereLayer(planet: Mesh, data: PlanetData): Mesh {
     // Thin glow shell (additive) approximating atmospheric scattering.
     const radius = data.size / 2;
     const atmo = MeshBuilder.CreateSphere(
@@ -1072,11 +1080,10 @@ export class PlanetScene {
       this.glowLayer.addIncludedOnlyMesh(atmo);
     }
 
-    // Let the atmosphere receive sun shadows softly (adds realism at terminator).
-    atmo.receiveShadows = false;
+    return atmo;
   }
 
-  private addCloudLayer(planet: Mesh, data: PlanetData): void {
+  private addCloudLayer(planet: Mesh, data: PlanetData): Mesh {
     // Simple rotating cloud shell: procedural alpha-noise texture.
     // Kept lightweight: one dynamic texture + slow rotation.
     const clouds = MeshBuilder.CreateSphere(
@@ -1121,10 +1128,14 @@ export class PlanetScene {
 
     clouds.material = cloudsMat;
 
+    clouds.receiveShadows = true;
+
     // Slow cloud rotation.
     this.scene.registerBeforeRender(() => {
       clouds.rotation.y += 0.0008;
     });
+
+    return clouds;
   }
 
   private createPlanetTexture(
