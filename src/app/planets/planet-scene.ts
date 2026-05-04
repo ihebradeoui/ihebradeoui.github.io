@@ -592,8 +592,9 @@ export class PlanetScene {
       pipeline.imageProcessing.vignetteWeight    = 2.2;
       pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 1);
       pipeline.imageProcessing.vignetteBlendMode = 1;
-      pipeline.imageProcessing.contrast  = 1.25;
-      pipeline.imageProcessing.exposure  = 1.05;
+      // Tone down the grade to avoid harsh contrast on HDR displays.
+      pipeline.imageProcessing.contrast  = 1.12;
+      pipeline.imageProcessing.exposure  = 0.95;
 
       // Depth of field can read as "blurry" on wide scenes.
       // Keep it OFF by default; it will be enabled when you want a cinematic focus pull.
