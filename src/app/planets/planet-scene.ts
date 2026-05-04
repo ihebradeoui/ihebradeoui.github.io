@@ -26,6 +26,9 @@ import {
   PointerEventTypes,
   PBRSubSurfaceConfiguration,
   DefaultRenderingPipeline,
+  DirectionalLight,
+  ShadowGenerator,
+  ImageProcessingConfiguration,
 } from '@babylonjs/core';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
@@ -112,6 +115,9 @@ export class PlanetScene {
   private subscriptions: Subscription[] = [];
   private sun: Mesh | null = null;
   private glowLayer: GlowLayer | null = null;
+  private sunLight: DirectionalLight | null = null;
+  private sunShadowGenerator: ShadowGenerator | null = null;
+  private cinematicPipeline: DefaultRenderingPipeline | null = null;
   private animationCallbacks: (() => void)[] = [];
   private meteorParticleSystems: ParticleSystem[] = [];
   private meteorInterval: number | null = null;
@@ -210,6 +216,11 @@ export class PlanetScene {
     const scene = new Scene(this.engine);
     this.scene = scene; // Assign early so methods can use it
 
+    // Physically-based rendering + filmic tonemapping.
+    scene.environmentIntensity = 1.0;
+    scene.imageProcessingConfiguration.toneMappingEnabled = true;
+    scene.imageProcessingConfiguration.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+
     // Deep black space background color for professional look
     scene.clearColor = new Color4(0, 0, 0, 1);
 
@@ -237,15 +248,14 @@ export class PlanetScene {
     });
     this.glowLayer.intensity = 0.85;
 
+    // HDR environment / image-based lighting (IBL)
+    this.setupEnvironmentIBL(scene);
+
     // Create sun at center
     this.createSun();
 
-    // Main light source from the sun — intense and warm
-    const sunLight = new PointLight('sunLight', Vector3.Zero(), scene);
-    sunLight.intensity = 5.5;
-    sunLight.range = 800;
-    sunLight.diffuse = new Color3(1.0, 0.96, 0.82);
-    sunLight.specular = new Color3(1.0, 0.96, 0.82);
+    // Main light source: directional "sun" with soft shadows.
+    this.setupSunLightAndShadows(scene);
 
     // Secondary fill light — very dim, cold, simulates deep-space starlight
     const ambientLight = new HemisphericLight(
@@ -292,6 +302,38 @@ export class PlanetScene {
     });
 
     return scene;
+  }
+
+  private setupEnvironmentIBL(scene: Scene): void {
+    // Use a prefiltered `.env` file if available (best for PBR performance/quality).
+    try {
+      const envTex = CubeTexture.CreateFromPrefilteredData(
+        '/assets/pbr/environment.env',
+        scene,
+      );
+      scene.environmentTexture = envTex;
+      scene.environmentIntensity = 0.75;
+    } catch (_e) {
+      // env texture not present
+    }
+  }
+
+  private setupSunLightAndShadows(scene: Scene): void {
+    const sunDirection = new Vector3(-0.35, -0.85, -0.25).normalize();
+    const sunLight = new DirectionalLight('sunDirectionalLight', sunDirection, scene);
+    sunLight.position = sunDirection.scale(-250);
+    sunLight.intensity = 6.0;
+    sunLight.diffuse = new Color3(1.0, 0.96, 0.82);
+    sunLight.specular = new Color3(1.0, 0.96, 0.82);
+
+    const shadowGenerator = new ShadowGenerator(2048, sunLight);
+    shadowGenerator.usePercentageCloserFiltering = true;
+    shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+    shadowGenerator.bias = 0.00025;
+    shadowGenerator.normalBias = 0.01;
+
+    this.sunLight = sunLight;
+    this.sunShadowGenerator = shadowGenerator;
   }
 
   private setupAnimationLoop(): void {
@@ -515,7 +557,7 @@ export class PlanetScene {
     try {
       const pipeline = new DefaultRenderingPipeline(
         'cinematicPipeline',
-        false, // no HDR — HDR mode was causing the sun glow to blow out
+        true, // HDR on: enables filmic highlights for bloom + PBR
         this.scene,
         [this.camera],
       );
@@ -524,22 +566,30 @@ export class PlanetScene {
       pipeline.fxaaEnabled = true;
       pipeline.samples = 4;
 
-      // Bloom — only the brightest emissive areas glow (sun, auras); threshold kept high
-      // to avoid a whole-scene dreamy haze that looks blurry
+      // Bloom — subtle and cinematic (avoid full-scene haze)
       pipeline.bloomEnabled = true;
-      pipeline.bloomThreshold = 0.65; // only very bright pixels
-      pipeline.bloomWeight    = 0.35; // moderate — adds drama without muddying the image
-      pipeline.bloomKernel    = 128;
-      pipeline.bloomScale     = 0.7;
+      pipeline.bloomThreshold = 0.75;
+      pipeline.bloomWeight    = 0.25;
+      pipeline.bloomKernel    = 96;
+      pipeline.bloomScale     = 0.6;
 
-      // Image processing — rich but sharp
+      // Image processing — "space cinematic" grade
       pipeline.imageProcessingEnabled = true;
       pipeline.imageProcessing.vignetteEnabled   = true;
-      pipeline.imageProcessing.vignetteWeight    = 3.5;
-      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 0);
+      pipeline.imageProcessing.vignetteWeight    = 2.2;
+      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 1);
       pipeline.imageProcessing.vignetteBlendMode = 1;
-      pipeline.imageProcessing.contrast  = 1.35;
-      pipeline.imageProcessing.exposure  = 1.1;
+      pipeline.imageProcessing.contrast  = 1.25;
+      pipeline.imageProcessing.exposure  = 1.05;
+
+      // Depth of field — subtle cinematic focus.
+      pipeline.depthOfFieldEnabled = true;
+      pipeline.depthOfFieldBlurLevel = 0;
+      pipeline.depthOfField.fStop = 2.8;
+      pipeline.depthOfField.focalLength = 60;
+      pipeline.depthOfField.focusDistance = 2500;
+
+      this.cinematicPipeline = pipeline;
 
       // NO chromatic aberration — splits RGB channels, makes edges look blurry
       // NO film grain — adds noise that reads as blur
@@ -558,14 +608,7 @@ export class PlanetScene {
     skyboxMaterial.diffuseColor  = new Color3(0, 0, 0);
     skyboxMaterial.specularColor = new Color3(0, 0, 0);
 
-    // Attempt HDR environment for PBR reflections
-    try {
-      const envTex = CubeTexture.CreateFromPrefilteredData(
-        '/assets/pbr/environment.env', scene,
-      );
-      scene.environmentTexture = envTex;
-      scene.environmentIntensity = 0.25;
-    } catch (_e) { /* no env texture available */ }
+    // Environment IBL is configured in setupEnvironmentIBL().
 
     skybox.material = skyboxMaterial;
     skybox.infiniteDistance = true;
