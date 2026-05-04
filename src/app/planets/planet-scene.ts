@@ -388,6 +388,11 @@ export class PlanetScene {
         moonData.mesh.position.z = Math.sin(moonData.angle) * moonData.orbitRadius;
         moonData.mesh.position.y = Math.sin(moonData.angle * 0.5) * moonData.orbitRadius * 0.2;
       });
+
+      // Keep DOF focus aligned with selection (cheap single distance calc).
+      if (this.selectedPlanet && this.cinematicPipeline?.depthOfFieldEnabled) {
+        this.updateCinematicFocusTarget();
+      }
       
       // Add cinematic camera drift — slow, majestic parallax motion
       // Only apply when not transitioning and not in manual control mode
@@ -1914,6 +1919,7 @@ export class PlanetScene {
     }
 
     this.selectedPlanet = planet;
+    this.updateCinematicFocusTarget();
     const modal = document.getElementById('planetModal');
     const nameInput = document.getElementById('planetName') as HTMLInputElement;
     const descInput = document.getElementById(
@@ -1954,6 +1960,16 @@ export class PlanetScene {
       modal.style.display = 'block';
       (modal as any).dataset.planetId = planetId;
     }
+  }
+
+  private updateCinematicFocusTarget(): void {
+    if (!this.cinematicPipeline || !this.cinematicPipeline.depthOfFieldEnabled) return;
+    if (!this.selectedPlanet) return;
+
+    // Approximate focus distance based on current camera -> planet distance.
+    const distance = Vector3.Distance(this.camera.position, this.selectedPlanet.getAbsolutePosition());
+    // DepthOfFieldEffect uses millimeter-like units; values around 1500–6000 are practical.
+    this.cinematicPipeline.depthOfField.focusDistance = Math.max(1200, distance * 30);
   }
 
   private setupModalInteraction(): void {
