@@ -13,6 +13,13 @@
   touch-action: none;
   background-color: #000000;
   color: #000000;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+#planetsCanvas:focus {
+  outline: none;
 }
 
 .modal {

@@ -34,10 +34,10 @@
     <!-- Hard fallback to prevent any white background, even during app bootstrap -->
     <div
       id="hard-black-backdrop"
-      style="position:fixed;inset:0;background:#000;z-index:-1;"
+      style="position:fixed;inset:0;background:#000;z-index:0;"
       aria-hidden="true"
     ></div>
 
-    <app-root style="display:block;min-height:100vh;background:#000;"></app-root>
+    <app-root style="display:block;min-height:100vh;background:#000;position:relative;z-index:1;"></app-root>
   </body>
 </html>

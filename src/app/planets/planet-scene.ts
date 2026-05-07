@@ -170,6 +170,10 @@ export class PlanetScene {
       antialias: true, // Enable hardware anti-aliasing
     });
 
+    // Reduce internal resolution on high-DPI displays for smoother frame times.
+    const deviceScale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    this.engine.setHardwareScalingLevel(deviceScale);
+
     // Initialize galaxies before creating the scene
     this.initializeGalaxies();
 
@@ -248,7 +252,7 @@ export class PlanetScene {
       mainTextureFixedSize: 512,
       blurKernelSize: 64,
     });
-    this.glowLayer.intensity = 0.85;
+    this.glowLayer.intensity = 0.6;
 
     // HDR environment / image-based lighting (IBL)
     this.setupEnvironmentIBL(scene);
@@ -581,10 +585,10 @@ export class PlanetScene {
 
       // Bloom — subtle and cinematic (avoid full-scene haze)
       pipeline.bloomEnabled = true;
-      pipeline.bloomThreshold = 0.75;
-      pipeline.bloomWeight    = 0.25;
-      pipeline.bloomKernel    = 96;
-      pipeline.bloomScale     = 0.6;
+      pipeline.bloomThreshold = 0.82;
+      pipeline.bloomWeight    = 0.18;
+      pipeline.bloomKernel    = 64;
+      pipeline.bloomScale     = 0.5;
 
       // Image processing — "space cinematic" grade
       pipeline.imageProcessingEnabled = true;
@@ -593,8 +597,8 @@ export class PlanetScene {
       pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 1);
       pipeline.imageProcessing.vignetteBlendMode = 1;
       // Tone down the grade to avoid harsh contrast on HDR displays.
-      pipeline.imageProcessing.contrast  = 1.12;
-      pipeline.imageProcessing.exposure  = 0.95;
+      pipeline.imageProcessing.contrast  = 1.05;
+      pipeline.imageProcessing.exposure  = 0.9;
 
       // Depth of field can read as "blurry" on wide scenes.
       // Keep it OFF by default; it will be enabled when you want a cinematic focus pull.
@@ -621,20 +625,14 @@ export class PlanetScene {
     const skyboxMaterial = new StandardMaterial('skyboxMaterial', scene);
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.disableLighting = true;
-    skyboxMaterial.emissiveColor = new Color3(1, 1, 1);
+    // Default to black so a missing texture never flashes white.
+    skyboxMaterial.emissiveColor = new Color3(0, 0, 0);
     skyboxMaterial.diffuseColor  = new Color3(0, 0, 0);
     skyboxMaterial.specularColor = new Color3(0, 0, 0);
 
     // NOTE: use a relative asset path (Angular may be deployed under a sub-path).
-    try {
-      const nebula = new Texture('assets/home/bg.jpg', scene, true, false);
-      nebula.wrapU = Texture.CLAMP_ADDRESSMODE;
-      nebula.wrapV = Texture.CLAMP_ADDRESSMODE;
-      skyboxMaterial.emissiveTexture = nebula;
-    } catch (_e) {
-      // fallback: keep black if texture unavailable
-      skyboxMaterial.emissiveColor = new Color3(0, 0, 0);
-    }
+    // Intentionally keep the skybox solid black.
+    skyboxMaterial.emissiveTexture = null;
 
     // Environment IBL is configured in setupEnvironmentIBL().
 
@@ -690,14 +688,14 @@ export class PlanetScene {
     brightStarTex.update();
 
     // Layer 1 — Dense micro star field (3500 particles, cool-blue tint)
-    const stars = new ParticleSystem('stars', 3500, this.scene);
+    const stars = new ParticleSystem('stars', 1800, this.scene);
     stars.emitter = Vector3.Zero();
     stars.minEmitBox = new Vector3(-W, -W, -W);
     stars.maxEmitBox = new Vector3(W, W, W);
     stars.particleTexture = starTex;
     stars.minSize = 0.08; stars.maxSize = 0.9;
     stars.minLifeTime = 9999; stars.maxLifeTime = 9999;
-    stars.emitRate = 3500;
+    stars.emitRate = 1800;
     stars.blendMode = ParticleSystem.BLENDMODE_ADD;
     stars.minEmitPower = 0; stars.maxEmitPower = 0;
     stars.color1 = new Color4(0.85, 0.9, 1.0, 0.75);
@@ -707,14 +705,14 @@ export class PlanetScene {
     stars.start();
 
     // Layer 2 — Warm star field (2000 orange/red dwarfs)
-    const warmStars = new ParticleSystem('warmStars', 2000, this.scene);
+    const warmStars = new ParticleSystem('warmStars', 1000, this.scene);
     warmStars.emitter = Vector3.Zero();
     warmStars.minEmitBox = new Vector3(-W, -W, -W);
     warmStars.maxEmitBox = new Vector3(W, W, W);
     warmStars.particleTexture = warmStarTex;
     warmStars.minSize = 0.1; warmStars.maxSize = 0.7;
     warmStars.minLifeTime = 9999; warmStars.maxLifeTime = 9999;
-    warmStars.emitRate = 2000;
+    warmStars.emitRate = 1000;
     warmStars.blendMode = ParticleSystem.BLENDMODE_ADD;
     warmStars.minEmitPower = 0; warmStars.maxEmitPower = 0;
     warmStars.color1 = new Color4(1.0, 0.82, 0.55, 0.55);
@@ -724,14 +722,14 @@ export class PlanetScene {
     warmStars.start();
 
     // Layer 3 — Bright foreground stars with diffraction spikes (300 particles)
-    const brightStars = new ParticleSystem('brightStars', 300, this.scene);
+    const brightStars = new ParticleSystem('brightStars', 160, this.scene);
     brightStars.emitter = Vector3.Zero();
     brightStars.minEmitBox = new Vector3(-W * 0.8, -W * 0.8, -W * 0.8);
     brightStars.maxEmitBox = new Vector3(W * 0.8, W * 0.8, W * 0.8);
     brightStars.particleTexture = brightStarTex;
     brightStars.minSize = 1.5; brightStars.maxSize = 4.5;
     brightStars.minLifeTime = 9999; brightStars.maxLifeTime = 9999;
-    brightStars.emitRate = 300;
+    brightStars.emitRate = 160;
     brightStars.blendMode = ParticleSystem.BLENDMODE_ADD;
     brightStars.minEmitPower = 0; brightStars.maxEmitPower = 0;
     brightStars.color1 = new Color4(0.95, 0.97, 1.0, 0.95);
@@ -925,7 +923,7 @@ export class PlanetScene {
         // (Keep segments bounded for performance on mid-range GPUs.)
         planet = MeshBuilder.CreateSphere(
           id,
-          { diameter: data.size, segments: 128 },
+          { diameter: data.size, segments: 64 },
           this.scene,
         );
         break;
@@ -1075,7 +1073,7 @@ export class PlanetScene {
     const radius = data.size / 2;
     const atmo = MeshBuilder.CreateSphere(
       `${planet.name}_atmosphere`,
-      { diameter: data.size * 1.06, segments: 96 },
+      { diameter: data.size * 1.06, segments: 64 },
       this.scene,
     );
     atmo.parent = planet;
@@ -1113,7 +1111,7 @@ export class PlanetScene {
     // For real 4K cloud maps, replace the DynamicTexture with `new Texture(...)`.
     const clouds = MeshBuilder.CreateSphere(
       `${planet.name}_clouds`,
-      { diameter: data.size * 1.025, segments: 96 },
+      { diameter: data.size * 1.025, segments: 64 },
       this.scene,
     );
     clouds.parent = planet;
@@ -1127,16 +1125,16 @@ export class PlanetScene {
     cloudsMat.emissiveColor = new Color3(0.15, 0.18, 0.22);
     cloudsMat.environmentIntensity = 0.15;
 
-    const cloudTex = new DynamicTexture(`${planet.name}_cloudTex`, 512, this.scene, false);
+    const cloudTex = new DynamicTexture(`${planet.name}_cloudTex`, 256, this.scene, false);
     const ctx = cloudTex.getContext() as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, 512, 512);
+    ctx.clearRect(0, 0, 256, 256);
     ctx.fillStyle = 'rgba(0,0,0,0)';
     ctx.fillRect(0, 0, 512, 512);
 
     // Cheap fractal-ish noise using many blurred circles.
-    for (let i = 0; i < 900; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
+    for (let i = 0; i < 300; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
       const r = 6 + Math.random() * 28;
       const a = 0.025 + Math.random() * 0.07;
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);
@@ -4482,29 +4480,29 @@ export class PlanetScene {
 
   private createNebula(): void {
     // Cloud texture — soft billow
-    const cloudTex = new DynamicTexture('nebulaCloudTex', 256, this.scene, false);
+    const cloudTex = new DynamicTexture('nebulaCloudTex', 192, this.scene, false);
     const nc = cloudTex.getContext() as CanvasRenderingContext2D;
-    const ng = nc.createRadialGradient(128, 128, 0, 128, 128, 128);
+    const ng = nc.createRadialGradient(96, 96, 0, 96, 96, 96);
     ng.addColorStop(0,    'rgba(255,255,255,1)');
     ng.addColorStop(0.25, 'rgba(255,255,255,0.75)');
     ng.addColorStop(0.55, 'rgba(255,255,255,0.35)');
     ng.addColorStop(0.85, 'rgba(255,255,255,0.1)');
     ng.addColorStop(1,    'rgba(0,0,0,0)');
-    nc.fillStyle = ng; nc.fillRect(0, 0, 256, 256);
+    nc.fillStyle = ng; nc.fillRect(0, 0, 192, 192);
     cloudTex.update();
 
     // Five nebula regions — blue, red, green, violet, orange — cinematic depth
     const regions = [
       { name: 'nebulaBlue',   pos: new Vector3(-130, 35, -90),  r: 100,
-        c1: new Color4(0.18, 0.38, 1.0, 0.10), c2: new Color4(0.38, 0.20, 0.9, 0.075), count: 220 },
+        c1: new Color4(0.18, 0.38, 1.0, 0.05), c2: new Color4(0.38, 0.20, 0.9, 0.04), count: 120 },
       { name: 'nebulaRed',    pos: new Vector3(120, -40, 145),  r: 90,
-        c1: new Color4(1.0, 0.14, 0.22, 0.09), c2: new Color4(0.88, 0.06, 0.32, 0.065), count: 200 },
+        c1: new Color4(1.0, 0.14, 0.22, 0.045), c2: new Color4(0.88, 0.06, 0.32, 0.035), count: 110 },
       { name: 'nebulaGreen',  pos: new Vector3(80, 60, -160),   r: 75,
-        c1: new Color4(0.12, 0.9, 0.45, 0.07), c2: new Color4(0.08, 0.6, 0.3, 0.05),  count: 180 },
+        c1: new Color4(0.12, 0.9, 0.45, 0.04), c2: new Color4(0.08, 0.6, 0.3, 0.03),  count: 100 },
       { name: 'nebulaViolet', pos: new Vector3(-90, -55, 120),  r: 85,
-        c1: new Color4(0.7, 0.1, 1.0, 0.085), c2: new Color4(0.5, 0.05, 0.8, 0.06),  count: 190 },
+        c1: new Color4(0.7, 0.1, 1.0, 0.045), c2: new Color4(0.5, 0.05, 0.8, 0.035),  count: 110 },
       { name: 'nebulaOrange', pos: new Vector3(150, 20, -50),   r: 65,
-        c1: new Color4(1.0, 0.5, 0.05, 0.07), c2: new Color4(0.9, 0.28, 0.02, 0.05), count: 160 },
+        c1: new Color4(1.0, 0.5, 0.05, 0.04), c2: new Color4(0.9, 0.28, 0.02, 0.03), count: 90 },
     ];
 
     for (const def of regions) {
@@ -4516,7 +4514,7 @@ export class PlanetScene {
       neb.minSize = 28; neb.maxSize = 80;
       neb.minLifeTime = 80; neb.maxLifeTime = 160;
       neb.emitRate = 5;
-      neb.blendMode = ParticleSystem.BLENDMODE_ADD;
+      neb.blendMode = ParticleSystem.BLENDMODE_STANDARD;
       neb.minEmitPower = 0.03; neb.maxEmitPower = 0.12;
       neb.minAngularSpeed = -0.008; neb.maxAngularSpeed = 0.008;
       neb.color1    = def.c1;
