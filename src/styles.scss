@@ -1,10 +1,19 @@
 /* You can add global styles to this file, and also import other style files */
 
-body, html {
+html, body {
     height: 100%;
     margin: 0;
     padding: 0;
-    background-color: #000000;
+    background: #000000 !important;
+    color-scheme: dark;
+}
+
+app-root {
+    display: block;
+    min-height: 100vh;
+    background: #000000 !important;
+    position: relative;
+    z-index: 1;
 }
 
 /* Canvas-based views need overflow hidden; text pages need to scroll.

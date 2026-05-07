@@ -26,6 +26,10 @@ import {
   PointerEventTypes,
   PBRSubSurfaceConfiguration,
   DefaultRenderingPipeline,
+  DirectionalLight,
+  ShadowGenerator,
+  ImageProcessingConfiguration,
+  FresnelParameters,
 } from '@babylonjs/core';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
@@ -112,6 +116,10 @@ export class PlanetScene {
   private subscriptions: Subscription[] = [];
   private sun: Mesh | null = null;
   private glowLayer: GlowLayer | null = null;
+  private sunLight: DirectionalLight | null = null;
+  private sunShadowGenerator: ShadowGenerator | null = null;
+  private cinematicPipeline: DefaultRenderingPipeline | null = null;
+  private enableDepthOfField: boolean = false;
   private animationCallbacks: (() => void)[] = [];
   private meteorParticleSystems: ParticleSystem[] = [];
   private meteorInterval: number | null = null;
@@ -162,6 +170,10 @@ export class PlanetScene {
       antialias: true, // Enable hardware anti-aliasing
     });
 
+    // Reduce internal resolution on high-DPI displays for smoother frame times.
+    const deviceScale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    this.engine.setHardwareScalingLevel(deviceScale);
+
     // Initialize galaxies before creating the scene
     this.initializeGalaxies();
 
@@ -210,6 +222,11 @@ export class PlanetScene {
     const scene = new Scene(this.engine);
     this.scene = scene; // Assign early so methods can use it
 
+    // Physically-based rendering + filmic tonemapping.
+    scene.environmentIntensity = 1.0;
+    scene.imageProcessingConfiguration.toneMappingEnabled = true;
+    scene.imageProcessingConfiguration.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+
     // Deep black space background color for professional look
     scene.clearColor = new Color4(0, 0, 0, 1);
 
@@ -235,17 +252,16 @@ export class PlanetScene {
       mainTextureFixedSize: 512,
       blurKernelSize: 64,
     });
-    this.glowLayer.intensity = 0.85;
+    this.glowLayer.intensity = 0.6;
+
+    // HDR environment / image-based lighting (IBL)
+    this.setupEnvironmentIBL(scene);
 
     // Create sun at center
     this.createSun();
 
-    // Main light source from the sun — intense and warm
-    const sunLight = new PointLight('sunLight', Vector3.Zero(), scene);
-    sunLight.intensity = 5.5;
-    sunLight.range = 800;
-    sunLight.diffuse = new Color3(1.0, 0.96, 0.82);
-    sunLight.specular = new Color3(1.0, 0.96, 0.82);
+    // Main light source: directional "sun" with soft shadows.
+    this.setupSunLightAndShadows(scene);
 
     // Secondary fill light — very dim, cold, simulates deep-space starlight
     const ambientLight = new HemisphericLight(
@@ -292,6 +308,44 @@ export class PlanetScene {
     });
 
     return scene;
+  }
+
+  /**
+   * Enables HDR image-based lighting (IBL) for PBR materials.
+   *
+   * Expected asset: `assets/pbr/environment.env` (prefiltered environment).
+   * This file can be generated from an HDRI using Babylon's environment tools.
+   */
+  private setupEnvironmentIBL(scene: Scene): void {
+    // Use a prefiltered `.env` file if available (best for PBR performance/quality).
+    try {
+      const envTex = CubeTexture.CreateFromPrefilteredData(
+        '/assets/pbr/environment.env',
+        scene,
+      );
+      scene.environmentTexture = envTex;
+      scene.environmentIntensity = 0.75;
+    } catch (_e) {
+      // env texture not present
+    }
+  }
+
+  private setupSunLightAndShadows(scene: Scene): void {
+    const sunDirection = new Vector3(-0.35, -0.85, -0.25).normalize();
+    const sunLight = new DirectionalLight('sunDirectionalLight', sunDirection, scene);
+    sunLight.position = sunDirection.scale(-250);
+    sunLight.intensity = 6.0;
+    sunLight.diffuse = new Color3(1.0, 0.96, 0.82);
+    sunLight.specular = new Color3(1.0, 0.96, 0.82);
+
+    const shadowGenerator = new ShadowGenerator(2048, sunLight);
+    shadowGenerator.usePercentageCloserFiltering = true;
+    shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+    shadowGenerator.bias = 0.00025;
+    shadowGenerator.normalBias = 0.01;
+
+    this.sunLight = sunLight;
+    this.sunShadowGenerator = shadowGenerator;
   }
 
   private setupAnimationLoop(): void {
@@ -346,6 +400,11 @@ export class PlanetScene {
         moonData.mesh.position.z = Math.sin(moonData.angle) * moonData.orbitRadius;
         moonData.mesh.position.y = Math.sin(moonData.angle * 0.5) * moonData.orbitRadius * 0.2;
       });
+
+      // Keep DOF focus aligned with selection (cheap single distance calc).
+      if (this.selectedPlanet && this.cinematicPipeline?.depthOfFieldEnabled) {
+        this.updateCinematicFocusTarget();
+      }
       
       // Add cinematic camera drift — slow, majestic parallax motion
       // Only apply when not transitioning and not in manual control mode
@@ -515,7 +574,7 @@ export class PlanetScene {
     try {
       const pipeline = new DefaultRenderingPipeline(
         'cinematicPipeline',
-        false, // no HDR — HDR mode was causing the sun glow to blow out
+        true, // HDR on: enables filmic highlights for bloom + PBR
         this.scene,
         [this.camera],
       );
@@ -524,22 +583,34 @@ export class PlanetScene {
       pipeline.fxaaEnabled = true;
       pipeline.samples = 4;
 
-      // Bloom — only the brightest emissive areas glow (sun, auras); threshold kept high
-      // to avoid a whole-scene dreamy haze that looks blurry
+      // Bloom — subtle and cinematic (avoid full-scene haze)
       pipeline.bloomEnabled = true;
-      pipeline.bloomThreshold = 0.65; // only very bright pixels
-      pipeline.bloomWeight    = 0.35; // moderate — adds drama without muddying the image
-      pipeline.bloomKernel    = 128;
-      pipeline.bloomScale     = 0.7;
+      pipeline.bloomThreshold = 0.82;
+      pipeline.bloomWeight    = 0.18;
+      pipeline.bloomKernel    = 64;
+      pipeline.bloomScale     = 0.5;
 
-      // Image processing — rich but sharp
+      // Image processing — "space cinematic" grade
       pipeline.imageProcessingEnabled = true;
       pipeline.imageProcessing.vignetteEnabled   = true;
-      pipeline.imageProcessing.vignetteWeight    = 3.5;
-      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 0);
+      pipeline.imageProcessing.vignetteWeight    = 2.2;
+      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 1);
       pipeline.imageProcessing.vignetteBlendMode = 1;
-      pipeline.imageProcessing.contrast  = 1.35;
-      pipeline.imageProcessing.exposure  = 1.1;
+      // Tone down the grade to avoid harsh contrast on HDR displays.
+      pipeline.imageProcessing.contrast  = 1.05;
+      pipeline.imageProcessing.exposure  = 0.9;
+
+      // Depth of field can read as "blurry" on wide scenes.
+      // Keep it OFF by default; it will be enabled when you want a cinematic focus pull.
+      pipeline.depthOfFieldEnabled = this.enableDepthOfField;
+      if (pipeline.depthOfFieldEnabled) {
+        pipeline.depthOfFieldBlurLevel = 0;
+        pipeline.depthOfField.fStop = 2.8;
+        pipeline.depthOfField.focalLength = 60;
+        pipeline.depthOfField.focusDistance = 2500;
+      }
+
+      this.cinematicPipeline = pipeline;
 
       // NO chromatic aberration — splits RGB channels, makes edges look blurry
       // NO film grain — adds noise that reads as blur
@@ -549,23 +620,21 @@ export class PlanetScene {
   }
 
   private createSpaceSkybox(scene: Scene): void {
-    // Deep-space black skybox — stars rendered via particles for full 3-D depth
+    // Galactic skybox (nebula) + stars rendered via particles for full 3-D depth
     const skybox = MeshBuilder.CreateBox('skybox', { size: 2000 }, scene);
     const skyboxMaterial = new StandardMaterial('skyboxMaterial', scene);
     skyboxMaterial.backFaceCulling = false;
     skyboxMaterial.disableLighting = true;
+    // Default to black so a missing texture never flashes white.
     skyboxMaterial.emissiveColor = new Color3(0, 0, 0);
     skyboxMaterial.diffuseColor  = new Color3(0, 0, 0);
     skyboxMaterial.specularColor = new Color3(0, 0, 0);
 
-    // Attempt HDR environment for PBR reflections
-    try {
-      const envTex = CubeTexture.CreateFromPrefilteredData(
-        '/assets/pbr/environment.env', scene,
-      );
-      scene.environmentTexture = envTex;
-      scene.environmentIntensity = 0.25;
-    } catch (_e) { /* no env texture available */ }
+    // NOTE: use a relative asset path (Angular may be deployed under a sub-path).
+    // Intentionally keep the skybox solid black.
+    skyboxMaterial.emissiveTexture = null;
+
+    // Environment IBL is configured in setupEnvironmentIBL().
 
     skybox.material = skyboxMaterial;
     skybox.infiniteDistance = true;
@@ -619,14 +688,14 @@ export class PlanetScene {
     brightStarTex.update();
 
     // Layer 1 — Dense micro star field (3500 particles, cool-blue tint)
-    const stars = new ParticleSystem('stars', 3500, this.scene);
+    const stars = new ParticleSystem('stars', 1800, this.scene);
     stars.emitter = Vector3.Zero();
     stars.minEmitBox = new Vector3(-W, -W, -W);
     stars.maxEmitBox = new Vector3(W, W, W);
     stars.particleTexture = starTex;
     stars.minSize = 0.08; stars.maxSize = 0.9;
     stars.minLifeTime = 9999; stars.maxLifeTime = 9999;
-    stars.emitRate = 3500;
+    stars.emitRate = 1800;
     stars.blendMode = ParticleSystem.BLENDMODE_ADD;
     stars.minEmitPower = 0; stars.maxEmitPower = 0;
     stars.color1 = new Color4(0.85, 0.9, 1.0, 0.75);
@@ -636,14 +705,14 @@ export class PlanetScene {
     stars.start();
 
     // Layer 2 — Warm star field (2000 orange/red dwarfs)
-    const warmStars = new ParticleSystem('warmStars', 2000, this.scene);
+    const warmStars = new ParticleSystem('warmStars', 1000, this.scene);
     warmStars.emitter = Vector3.Zero();
     warmStars.minEmitBox = new Vector3(-W, -W, -W);
     warmStars.maxEmitBox = new Vector3(W, W, W);
     warmStars.particleTexture = warmStarTex;
     warmStars.minSize = 0.1; warmStars.maxSize = 0.7;
     warmStars.minLifeTime = 9999; warmStars.maxLifeTime = 9999;
-    warmStars.emitRate = 2000;
+    warmStars.emitRate = 1000;
     warmStars.blendMode = ParticleSystem.BLENDMODE_ADD;
     warmStars.minEmitPower = 0; warmStars.maxEmitPower = 0;
     warmStars.color1 = new Color4(1.0, 0.82, 0.55, 0.55);
@@ -653,14 +722,14 @@ export class PlanetScene {
     warmStars.start();
 
     // Layer 3 — Bright foreground stars with diffraction spikes (300 particles)
-    const brightStars = new ParticleSystem('brightStars', 300, this.scene);
+    const brightStars = new ParticleSystem('brightStars', 160, this.scene);
     brightStars.emitter = Vector3.Zero();
     brightStars.minEmitBox = new Vector3(-W * 0.8, -W * 0.8, -W * 0.8);
     brightStars.maxEmitBox = new Vector3(W * 0.8, W * 0.8, W * 0.8);
     brightStars.particleTexture = brightStarTex;
     brightStars.minSize = 1.5; brightStars.maxSize = 4.5;
     brightStars.minLifeTime = 9999; brightStars.maxLifeTime = 9999;
-    brightStars.emitRate = 300;
+    brightStars.emitRate = 160;
     brightStars.blendMode = ParticleSystem.BLENDMODE_ADD;
     brightStars.minEmitPower = 0; brightStars.maxEmitPower = 0;
     brightStars.color1 = new Color4(0.95, 0.97, 1.0, 0.95);
@@ -850,10 +919,11 @@ export class PlanetScene {
         break;
       case 'sphere':
       default:
-        // Create planet sphere with ULTRA HIGH detail for Unreal Engine 5 style appearance
+        // Create planet sphere with high detail for cinematic look.
+        // (Keep segments bounded for performance on mid-range GPUs.)
         planet = MeshBuilder.CreateSphere(
           id,
-          { diameter: data.size, segments: 256 }, // Increased to 256 for ultra high poly look
+          { diameter: data.size, segments: 64 },
           this.scene,
         );
         break;
@@ -920,6 +990,19 @@ export class PlanetScene {
 
     planet.material = material;
 
+    // Shadows: only enable for reasonably sized/close planets.
+    planet.receiveShadows = true;
+    this.sunShadowGenerator?.addShadowCaster(planet, true);
+
+    // Atmosphere + clouds (for spherical planets only)
+    if (shape === 'sphere') {
+      const atmo = this.addAtmosphereLayer(planet, data);
+      const clouds = this.addCloudLayer(planet, data);
+      this.sunShadowGenerator?.addShadowCaster(clouds, true);
+      // Atmosphere is additive glow; don't cast/receive shadows.
+      atmo.receiveShadows = false;
+    }
+
     // Store actual radius for later use
     data.actualRadius = data.size / 2;
 
@@ -981,6 +1064,101 @@ export class PlanetScene {
     this.planetDataMap.set(id, data);
 
     return planet;
+  }
+
+  private addAtmosphereLayer(planet: Mesh, data: PlanetData): Mesh {
+    // Atmospheric scattering approximation:
+    // Render a slightly larger shell with additive blending, and use Fresnel to
+    // brighten the limb (edge) more than the center.
+    const radius = data.size / 2;
+    const atmo = MeshBuilder.CreateSphere(
+      `${planet.name}_atmosphere`,
+      { diameter: data.size * 1.06, segments: 64 },
+      this.scene,
+    );
+    atmo.parent = planet;
+    atmo.isPickable = false;
+
+    const atmoMat = new StandardMaterial(`${planet.name}_atmoMat`, this.scene);
+    atmoMat.backFaceCulling = false;
+    atmoMat.alpha = 0.9;
+    atmoMat.alphaMode = Engine.ALPHA_ADD;
+    atmoMat.disableLighting = false;
+    atmoMat.emissiveColor = Color3.FromHexString(data.color).scale(0.35);
+    atmoMat.diffuseColor = Color3.Black();
+    atmoMat.specularColor = Color3.Black();
+
+    // Fresnel makes the shell brighter on the limb (edge) and darker in the center.
+    const fresnel = new FresnelParameters();
+    fresnel.bias = 0.1;
+    fresnel.power = 4.0;
+    fresnel.leftColor = Color3.Black();
+    fresnel.rightColor = Color3.White();
+    atmoMat.emissiveFresnelParameters = fresnel;
+
+    atmo.material = atmoMat;
+
+    if (this.glowLayer) {
+      this.glowLayer.addIncludedOnlyMesh(atmo);
+    }
+
+    return atmo;
+  }
+
+  private addCloudLayer(planet: Mesh, data: PlanetData): Mesh {
+    // Cloud shell:
+    // A second, slightly larger sphere with an alpha noise texture.
+    // For real 4K cloud maps, replace the DynamicTexture with `new Texture(...)`.
+    const clouds = MeshBuilder.CreateSphere(
+      `${planet.name}_clouds`,
+      { diameter: data.size * 1.025, segments: 64 },
+      this.scene,
+    );
+    clouds.parent = planet;
+    clouds.isPickable = false;
+
+    const cloudsMat = new PBRMaterial(`${planet.name}_cloudMat`, this.scene);
+    cloudsMat.metallic = 0;
+    cloudsMat.roughness = 1;
+    cloudsMat.alpha = 0.55;
+    cloudsMat.alphaMode = Engine.ALPHA_COMBINE;
+    cloudsMat.emissiveColor = new Color3(0.15, 0.18, 0.22);
+    cloudsMat.environmentIntensity = 0.15;
+
+    const cloudTex = new DynamicTexture(`${planet.name}_cloudTex`, 256, this.scene, false);
+    const ctx = cloudTex.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Cheap fractal-ish noise using many blurred circles.
+    for (let i = 0; i < 300; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const r = 6 + Math.random() * 28;
+      const a = 0.025 + Math.random() * 0.07;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,255,255,${a})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    cloudTex.update();
+
+    cloudsMat.opacityTexture = cloudTex;
+    cloudsMat.albedoColor = new Color3(1, 1, 1);
+    cloudsMat.useAlphaFromAlbedoTexture = false;
+
+    clouds.material = cloudsMat;
+
+    clouds.receiveShadows = true;
+
+    // Slow cloud rotation.
+    this.scene.registerBeforeRender(() => {
+      clouds.rotation.y += 0.0008;
+    });
+
+    return clouds;
   }
 
   private createPlanetTexture(
@@ -1871,6 +2049,7 @@ export class PlanetScene {
     }
 
     this.selectedPlanet = planet;
+    this.updateCinematicFocusTarget();
     const modal = document.getElementById('planetModal');
     const nameInput = document.getElementById('planetName') as HTMLInputElement;
     const descInput = document.getElementById(
@@ -1911,6 +2090,16 @@ export class PlanetScene {
       modal.style.display = 'block';
       (modal as any).dataset.planetId = planetId;
     }
+  }
+
+  private updateCinematicFocusTarget(): void {
+    if (!this.cinematicPipeline || !this.cinematicPipeline.depthOfFieldEnabled) return;
+    if (!this.selectedPlanet) return;
+
+    // Approximate focus distance based on current camera -> planet distance.
+    const distance = Vector3.Distance(this.camera.position, this.selectedPlanet.getAbsolutePosition());
+    // DepthOfFieldEffect uses millimeter-like units; values around 1500–6000 are practical.
+    this.cinematicPipeline.depthOfField.focusDistance = Math.max(1200, distance * 30);
   }
 
   private setupModalInteraction(): void {
@@ -4291,29 +4480,29 @@ export class PlanetScene {
 
   private createNebula(): void {
     // Cloud texture — soft billow
-    const cloudTex = new DynamicTexture('nebulaCloudTex', 256, this.scene, false);
+    const cloudTex = new DynamicTexture('nebulaCloudTex', 192, this.scene, false);
     const nc = cloudTex.getContext() as CanvasRenderingContext2D;
-    const ng = nc.createRadialGradient(128, 128, 0, 128, 128, 128);
+    const ng = nc.createRadialGradient(96, 96, 0, 96, 96, 96);
     ng.addColorStop(0,    'rgba(255,255,255,1)');
     ng.addColorStop(0.25, 'rgba(255,255,255,0.75)');
     ng.addColorStop(0.55, 'rgba(255,255,255,0.35)');
     ng.addColorStop(0.85, 'rgba(255,255,255,0.1)');
     ng.addColorStop(1,    'rgba(0,0,0,0)');
-    nc.fillStyle = ng; nc.fillRect(0, 0, 256, 256);
+    nc.fillStyle = ng; nc.fillRect(0, 0, 192, 192);
     cloudTex.update();
 
     // Five nebula regions — blue, red, green, violet, orange — cinematic depth
     const regions = [
       { name: 'nebulaBlue',   pos: new Vector3(-130, 35, -90),  r: 100,
-        c1: new Color4(0.18, 0.38, 1.0, 0.10), c2: new Color4(0.38, 0.20, 0.9, 0.075), count: 220 },
+        c1: new Color4(0.18, 0.38, 1.0, 0.05), c2: new Color4(0.38, 0.20, 0.9, 0.04), count: 120 },
       { name: 'nebulaRed',    pos: new Vector3(120, -40, 145),  r: 90,
-        c1: new Color4(1.0, 0.14, 0.22, 0.09), c2: new Color4(0.88, 0.06, 0.32, 0.065), count: 200 },
+        c1: new Color4(1.0, 0.14, 0.22, 0.045), c2: new Color4(0.88, 0.06, 0.32, 0.035), count: 110 },
       { name: 'nebulaGreen',  pos: new Vector3(80, 60, -160),   r: 75,
-        c1: new Color4(0.12, 0.9, 0.45, 0.07), c2: new Color4(0.08, 0.6, 0.3, 0.05),  count: 180 },
+        c1: new Color4(0.12, 0.9, 0.45, 0.04), c2: new Color4(0.08, 0.6, 0.3, 0.03),  count: 100 },
       { name: 'nebulaViolet', pos: new Vector3(-90, -55, 120),  r: 85,
-        c1: new Color4(0.7, 0.1, 1.0, 0.085), c2: new Color4(0.5, 0.05, 0.8, 0.06),  count: 190 },
+        c1: new Color4(0.7, 0.1, 1.0, 0.045), c2: new Color4(0.5, 0.05, 0.8, 0.035),  count: 110 },
       { name: 'nebulaOrange', pos: new Vector3(150, 20, -50),   r: 65,
-        c1: new Color4(1.0, 0.5, 0.05, 0.07), c2: new Color4(0.9, 0.28, 0.02, 0.05), count: 160 },
+        c1: new Color4(1.0, 0.5, 0.05, 0.04), c2: new Color4(0.9, 0.28, 0.02, 0.03), count: 90 },
     ];
 
     for (const def of regions) {
@@ -4325,7 +4514,7 @@ export class PlanetScene {
       neb.minSize = 28; neb.maxSize = 80;
       neb.minLifeTime = 80; neb.maxLifeTime = 160;
       neb.emitRate = 5;
-      neb.blendMode = ParticleSystem.BLENDMODE_ADD;
+      neb.blendMode = ParticleSystem.BLENDMODE_STANDARD;
       neb.minEmitPower = 0.03; neb.maxEmitPower = 0.12;
       neb.minAngularSpeed = -0.008; neb.maxAngularSpeed = 0.008;
       neb.color1    = def.c1;

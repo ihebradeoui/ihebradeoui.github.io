@@ -26,7 +26,11 @@ jobs:
       run: npm ci
       
     - name: Build Angular application
-      run: npm run build -- --configuration production --base-href https://cosmicworlds.live/
+      # Use relative base/deploy URLs so the same build works on:
+      # - custom domains (e.g. cosmicworlds.live) at /
+      # - GitHub Pages project paths (e.g. /<repo>/)
+      # This prevents the "black flash then white screen" caused by assets resolving under the wrong base href.
+      run: npm run build -- --configuration production --base-href ./ --deploy-url ./
       
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3

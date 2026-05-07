@@ -25,11 +25,19 @@
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cosmicworlds.live/" />
-    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg?v=3" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico?v=3" />
     <!-- Google AdSense -->
     <meta name="google-adsense-account" content="ca-pub-4685187700153873" />
   </head>
   <body>
-    <app-root></app-root>
+    <!-- Hard fallback to prevent any white background, even during app bootstrap -->
+    <div
+      id="hard-black-backdrop"
+      style="position:fixed;inset:0;background:#000;z-index:0;"
+      aria-hidden="true"
+    ></div>
+
+    <app-root style="display:block;min-height:100vh;background:#000;position:relative;z-index:1;"></app-root>
   </body>
 </html>
