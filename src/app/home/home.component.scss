@@ -1,8 +1,9 @@
 @import url("https://fonts.googleapis.com/css?family=Fjalla+One&display=swap");
 
 .bg {
-  background: url("/assets/home/bg.jpg") center center no-repeat;
+  background: url("../../assets/home/bg.jpg") center center no-repeat;
   background-size: cover;
+  background-color: #000;
   width: 100vw;
   height: 100vh;
   display: grid;
@@ -12,15 +13,19 @@
 }
 
 .contact-us {
-  background: #f8f4e5;
+  background: rgba(10, 14, 26, 0.78);
+  backdrop-filter: blur(10px);
   padding: 50px 100px;
-  border: 2px solid black;
-  box-shadow: 15px 15px 1px #ffa580, 15px 15px 1px 2px black;
+  border: 1px solid rgba(138, 127, 255, 0.35);
+  box-shadow:
+    0 10px 34px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(138, 127, 255, 0.12);
   width: 30%;
   font-size: 28pt;
   text-align: center;
   line-height: 28pt;
   font-family: "Fjalla One";
+  color: #fff;
 }
 
 input {
@@ -31,16 +36,16 @@ input {
   font-family: "Fjalla One";
   margin-bottom: 28pt;
   border: none;
-  border-bottom: 5px solid black;
-  background: #f8f4e5;
+  border-bottom: 3px solid rgba(138, 127, 255, 0.55);
+  background: rgba(0, 0, 0, 0.32);
   min-width: 250px;
   padding-left: 5px;
   outline: none;
-  color: black;
+  color: #fff;
 }
 
 input:focus {
-  border-bottom: 5px solid #ffa580;
+  border-bottom: 3px solid rgba(138, 127, 255, 0.95);
 }
 
 button {
@@ -48,17 +53,19 @@ button {
   margin: 0 10px;
   line-height: 28pt;
   padding: 0 20px;
-  background: #ffa580;
+  background: rgba(138, 127, 255, 0.25);
   letter-spacing: 2px;
   transition: 0.2s all ease-in-out;
   outline: none;
-  border: 1px solid black;
-  box-shadow: 3px 3px 1px 1px #95a4ff, 3px 3px 1px 2px black;
+  border: 1px solid rgba(138, 127, 255, 0.45);
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.35),
+    0 0 18px rgba(138, 127, 255, 0.08);
+  color: #fff;
 }
 button:hover {
-  background: black;
-  color: white;
-  border: 1px solid black;
+  background: rgba(138, 127, 255, 0.45);
+  border: 1px solid rgba(200, 192, 255, 0.65);
 }
 
 .button-container {
@@ -73,9 +80,9 @@ button:hover {
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-  border-bottom: 5px solid #95a4ff;
-  -webkit-text-fill-color: #2A293E;
-  -webkit-box-shadow: 0 0 0px 1000px #f8f4e5 inset;
+  border-bottom: 3px solid rgba(138, 127, 255, 0.95);
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.32) inset;
   transition: background-color 5000s ease-in-out 0s;
 }
 
