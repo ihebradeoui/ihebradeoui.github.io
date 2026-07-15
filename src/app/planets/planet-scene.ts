@@ -26,11 +26,14 @@ import {
   PointerEventTypes,
   PBRSubSurfaceConfiguration,
   DefaultRenderingPipeline,
-  DirectionalLight,
-  ShadowGenerator,
   ImageProcessingConfiguration,
-  FresnelParameters,
+  ShaderMaterial,
+  VolumetricLightScatteringPostProcess,
+  ColorCurves,
+  Matrix,
+  Quaternion,
 } from '@babylonjs/core';
+import { registerSpaceShaders } from './space-shaders';
 import { AngularFireDatabase } from '@angular/fire/compat/database';
 import { Auth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, User } from '@angular/fire/auth';
 import { Subscription } from 'rxjs';
@@ -116,8 +119,16 @@ export class PlanetScene {
   private subscriptions: Subscription[] = [];
   private sun: Mesh | null = null;
   private glowLayer: GlowLayer | null = null;
-  private sunLight: DirectionalLight | null = null;
-  private sunShadowGenerator: ShadowGenerator | null = null;
+  private sunLight: PointLight | null = null;
+  private sunMaterial: ShaderMaterial | null = null;
+  private skyMaterial: ShaderMaterial | null = null;
+  private sunHalo: Mesh | null = null;
+  private sunHaloTexture: DynamicTexture | null = null;
+  private godRays: VolumetricLightScatteringPostProcess | null = null;
+  private planetShaderMats: ShaderMaterial[] = [];
+  private asteroidBelt: Mesh | null = null;
+  private bestScalingLevel: number = 1;
+  private adaptiveQualityInterval: number | null = null;
   private cinematicPipeline: DefaultRenderingPipeline | null = null;
   private enableDepthOfField: boolean = false;
   private animationCallbacks: (() => void)[] = [];
@@ -157,7 +168,6 @@ export class PlanetScene {
   private currentUser: User | null = null;
   private authUnsubscribe: (() => void) | null = null;
   private planetTooltip: HTMLDivElement | null = null;
-  private sunUpdateInterval: number | null = null;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -165,14 +175,19 @@ export class PlanetScene {
     private auth: Auth,
   ) {
     this.engine = new Engine(this.canvas, true, {
-      preserveDrawingBuffer: true,
+      preserveDrawingBuffer: false, // Skip back-buffer copies for higher FPS
       stencil: true,
       antialias: true, // Enable hardware anti-aliasing
+      powerPreference: 'high-performance',
     });
 
-    // Reduce internal resolution on high-DPI displays for smoother frame times.
-    const deviceScale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-    this.engine.setHardwareScalingLevel(deviceScale);
+    // Render sharper than CSS resolution on high-DPI displays (capped so 4K
+    // panels don't pay full native cost). Adaptive quality below adjusts this
+    // at runtime if the GPU can't keep up.
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    this.bestScalingLevel = 1 / Math.min(dpr, 1.25);
+    this.engine.setHardwareScalingLevel(this.bestScalingLevel);
+    this.startAdaptiveQuality();
 
     // Initialize galaxies before creating the scene
     this.initializeGalaxies();
@@ -181,6 +196,9 @@ export class PlanetScene {
     this.initializeAudio();
 
     this.scene = this.createScene();
+
+    // Debug handle for diagnostics (harmless in production)
+    (window as any).__planetScene = this;
 
     // Run the render loop
     this.engine.runRenderLoop(() => {
@@ -222,6 +240,9 @@ export class PlanetScene {
     const scene = new Scene(this.engine);
     this.scene = scene; // Assign early so methods can use it
 
+    // Register custom GLSL (sky dome, plasma sun, atmosphere scattering).
+    registerSpaceShaders();
+
     // Physically-based rendering + filmic tonemapping.
     scene.environmentIntensity = 1.0;
     scene.imageProcessingConfiguration.toneMappingEnabled = true;
@@ -246,6 +267,11 @@ export class PlanetScene {
     this.camera.upperRadiusLimit = 300;
     this.camera.wheelPrecision = 20;
     this.camera.panningSensibility = 0;
+    // Slightly wide "anamorphic" field of view + smooth, weighty camera inertia
+    this.camera.fov = 0.92;
+    this.camera.inertia = 0.92;
+    this.camera.minZ = 0.5;
+    this.camera.maxZ = 5000; // must reach past the sky dome (radius 1500)
 
     // Glow layer — lightweight, small kernel so it doesn't bleed across the screen
     this.glowLayer = new GlowLayer('glow', scene, {
@@ -260,8 +286,9 @@ export class PlanetScene {
     // Create sun at center
     this.createSun();
 
-    // Main light source: directional "sun" with soft shadows.
-    this.setupSunLightAndShadows(scene);
+    // Main light source: point light at the sun's core, so every planet gets
+    // a physically correct day/night terminator (crescents, like the movies).
+    this.setupSunLight(scene);
 
     // Secondary fill light — very dim, cold, simulates deep-space starlight
     const ambientLight = new HemisphericLight(
@@ -273,14 +300,12 @@ export class PlanetScene {
     ambientLight.diffuse = new Color3(0.15, 0.18, 0.3);
     ambientLight.groundColor = new Color3(0.03, 0.03, 0.08);
 
-    // Enhanced space skybox
-    this.createSpaceSkybox(scene);
+    // Procedural deep-space dome: stars, milky way and nebulae in ONE GPU
+    // draw call (replaces ~3500 CPU-simulated particles).
+    this.createCinematicSky(scene);
 
-    // Create star field particles
-    this.createStarField();
-
-    // Create nebula effect
-    this.createNebula();
+    // Sparse foreground dust motes for parallax depth
+    this.createSpaceDust();
 
     // Setup cinematic post-processing pipeline
     this.setupPostProcessing();
@@ -293,6 +318,9 @@ export class PlanetScene {
 
     // Setup unified animation loop
     this.setupAnimationLoop();
+
+    // Opening title-sequence dolly into the system
+    this.playIntroShot();
 
     // Setup pointer observable for debugging and enhanced picking
     scene.onPointerObservable.add((pointerInfo) => {
@@ -330,35 +358,100 @@ export class PlanetScene {
     }
   }
 
-  private setupSunLightAndShadows(scene: Scene): void {
-    const sunDirection = new Vector3(-0.35, -0.85, -0.25).normalize();
-    const sunLight = new DirectionalLight('sunDirectionalLight', sunDirection, scene);
-    sunLight.position = sunDirection.scale(-250);
-    sunLight.intensity = 6.0;
-    sunLight.diffuse = new Color3(1.0, 0.96, 0.82);
-    sunLight.specular = new Color3(1.0, 0.96, 0.82);
-
-    const shadowGenerator = new ShadowGenerator(2048, sunLight);
-    shadowGenerator.usePercentageCloserFiltering = true;
-    shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
-    shadowGenerator.bias = 0.00025;
-    shadowGenerator.normalBias = 0.01;
+  private setupSunLight(scene: Scene): void {
+    // Light radiates from the sun at the center of the system. Planets facing
+    // it are lit, the far side falls into night — dramatic crescents for free,
+    // with no shadow-map render pass to pay for.
+    const sunLight = new PointLight('sunPointLight', Vector3.Zero(), scene);
+    sunLight.intensity = 1.7;
+    sunLight.range = 2000;
+    sunLight.diffuse = new Color3(1.0, 0.95, 0.82);
+    sunLight.specular = new Color3(1.0, 0.9, 0.75);
 
     this.sunLight = sunLight;
-    this.sunShadowGenerator = shadowGenerator;
+  }
+
+  /**
+   * Adaptive resolution: if the GPU can't hold ~50+ FPS, gently lower the
+   * internal render resolution; when there is headroom, climb back toward
+   * the sharpest level. Keeps motion smooth on weak hardware, crisp on strong.
+   */
+  private startAdaptiveQuality(): void {
+    const worstScalingLevel = 1.5;
+    let lowStreak = 0;
+    let checks = 0;
+    this.adaptiveQualityInterval = window.setInterval(() => {
+      // Ignore the first checks — startup compilation makes FPS lie.
+      if (checks++ < 4) return;
+      const fps = this.engine.getFps();
+      const current = this.engine.getHardwareScalingLevel();
+      if (fps < 38) {
+        // Require two consecutive slow reads before degrading resolution.
+        lowStreak++;
+        if (lowStreak >= 2 && current < worstScalingLevel) {
+          this.engine.setHardwareScalingLevel(Math.min(worstScalingLevel, current * 1.15));
+          lowStreak = 0;
+        }
+      } else {
+        lowStreak = 0;
+        if (fps > 52 && current > this.bestScalingLevel + 0.01) {
+          this.engine.setHardwareScalingLevel(Math.max(this.bestScalingLevel, current / 1.08));
+        }
+      }
+    }, 2000);
   }
 
   private setupAnimationLoop(): void {
     // Time tracking for smooth motion effects
     let time = 0;
-    
+    // Solar flare scheduling (time is ~0.6 units/second)
+    let nextFlareAt = 12 + Math.random() * 14;
+    let flareClock = -1;
+
     // Single animation callback for all scene animations
     this.scene.registerBeforeRender(() => {
-      time += 0.01; // Increment time for smooth animations
+      // Frame-rate independent motion: ratio is 1.0 at 60 FPS, so the scene
+      // moves at identical speed on 30 Hz and 144 Hz displays.
+      const ratio = this.scene.getAnimationRatio();
+      time += 0.01 * ratio;
+
+      // Feed time into the animated GPU shaders (sun plasma, sky twinkle,
+      // gas-giant storms, magma flows)
+      if (this.sunMaterial) this.sunMaterial.setFloat('time', time);
+      if (this.skyMaterial) this.skyMaterial.setFloat('time', time);
+      for (const mat of this.planetShaderMats) mat.setFloat('time', time);
+
+      // Occasional solar flare — the star breathes, its light swells
+      if (flareClock < 0 && time > nextFlareAt) {
+        flareClock = 0;
+        nextFlareAt = time + 18 + Math.random() * 22;
+      }
+      if (flareClock >= 0) {
+        flareClock += 0.01 * ratio;
+        const env = Math.sin(Math.min(flareClock / 1.6, 1) * Math.PI);
+        this.sunMaterial?.setFloat('flare', env);
+        if (this.sunLight) this.sunLight.intensity = 1.7 + env * 0.55;
+        if (flareClock >= 1.6) {
+          flareClock = -1;
+          this.sunMaterial?.setFloat('flare', 0);
+          if (this.sunLight) this.sunLight.intensity = 1.7;
+        }
+      }
+
+      // The asteroid belt slowly wheels around the star
+      if (this.asteroidBelt) {
+        this.asteroidBelt.rotation.y += 0.0005 * ratio;
+      }
+
+      // Slow spin for the distant spiral galaxies
+      this.distantGalaxies.forEach((mesh) => {
+        const tex = mesh.metadata?.spriteTexture as Texture | undefined;
+        if (tex) tex.wAng += 0.0012 * ratio;
+      });
 
       // Rotate sun slowly
       if (this.sun) {
-        this.sun.rotation.y += 0.00025;
+        this.sun.rotation.y += 0.00025 * ratio;
       }
 
       // Update all planet orbits and rotations
@@ -371,7 +464,7 @@ export class PlanetScene {
           data.orbitAngle !== undefined
         ) {
           // Update orbit angle
-          data.orbitAngle += data.orbitSpeed;
+          data.orbitAngle += data.orbitSpeed * ratio;
 
           // Calculate new position to match the tilted orbit path
           // The orbit path (torus) is rotated around X-axis by inclination
@@ -389,13 +482,13 @@ export class PlanetScene {
           planet.position.y = -z * Math.sin(inclination);
 
           // Planet self-rotation - slower for cozy vibe
-          planet.rotation.y += 0.002;
+          planet.rotation.y += 0.002 * ratio;
         }
       });
 
       // Update moon companion orbits
       this.moonMeshes.forEach((moonData) => {
-        moonData.angle += 0.015;
+        moonData.angle += 0.015 * ratio;
         moonData.mesh.position.x = Math.cos(moonData.angle) * moonData.orbitRadius;
         moonData.mesh.position.z = Math.sin(moonData.angle) * moonData.orbitRadius;
         moonData.mesh.position.y = Math.sin(moonData.angle * 0.5) * moonData.orbitRadius * 0.2;
@@ -415,12 +508,12 @@ export class PlanetScene {
         const driftY = Math.cos(time * 0.18) * driftAmplitude * 0.45 + Math.cos(time * 0.11) * driftAmplitude * 0.2;
         
         // Apply drift to camera alpha and beta (orbital angles)
-        this.camera.alpha += driftX * 0.00012;
-        this.camera.beta  += driftY * 0.00012;
-        
+        this.camera.alpha += driftX * 0.00012 * ratio;
+        this.camera.beta  += driftY * 0.00012 * ratio;
+
         // Subtle zoom breathing — like a camera operator gently pulling focus
         const breathe = Math.sin(time * 0.13) * 0.08 + Math.sin(time * 0.05) * 0.04;
-        this.camera.radius += breathe * 0.012;
+        this.camera.radius += breathe * 0.012 * ratio;
       }
       
       // Handle camera following for FOLLOW_PLANET preset
@@ -434,93 +527,142 @@ export class PlanetScene {
   }
 
   private createSun(): void {
-    // Sun sphere — high detail for close-up look
+    // Sun sphere — surface is a live GPU plasma shader (granulation, limb
+    // darkening, HDR rim) instead of a canvas texture redrawn on the CPU.
     this.sun = MeshBuilder.CreateSphere(
       'sun',
-      { diameter: 8, segments: 96 },
+      { diameter: 8, segments: 64 },
       this.scene,
     );
     this.sun.position = Vector3.Zero();
 
-    const sunMaterial = new PBRMaterial('sunMaterial', this.scene);
-
-    // Vivid emissive values for dramatic bloom effect
-    sunMaterial.emissiveColor = new Color3(1.0, 0.85, 0.30);
-    sunMaterial.emissiveIntensity = 1.2;
-    sunMaterial.albedoColor = new Color3(1.0, 0.65, 0.1);
-    sunMaterial.metallic = 0.0;
-    sunMaterial.roughness = 0.88;
-
-    // Draw sun surface once at startup (baked texture — no per-frame update)
-    const sunTexture = new DynamicTexture('sunTexture', 512, this.scene, false);
-    this.drawSunSurface(sunTexture, 0);
-    sunMaterial.emissiveTexture = sunTexture;
+    const sunMaterial = new ShaderMaterial('sunMaterial', this.scene, 'cinematicSun', {
+      attributes: ['position', 'normal'],
+      uniforms: [
+        'world', 'worldViewProjection', 'cameraPosition',
+        'time', 'coreColor', 'edgeColor', 'flare',
+      ],
+    });
+    sunMaterial.setFloat('time', 0);
+    sunMaterial.setFloat('flare', 0);
+    sunMaterial.setColor3('coreColor', new Color3(1.0, 0.82, 0.35));
+    sunMaterial.setColor3('edgeColor', new Color3(0.9, 0.32, 0.05));
+    sunMaterial.backFaceCulling = true;
     this.sun.material = sunMaterial;
-
-    // Slow animated update: redraw at ~1 fps to save GPU/CPU
-    let sunTime = 0;
-    this.sunUpdateInterval = window.setInterval(() => {
-      sunTime += 0.3;
-      this.drawSunSurface(sunTexture, sunTime);
-    }, 1000);
+    this.sunMaterial = sunMaterial;
 
     if (this.glowLayer) {
       this.glowLayer.addIncludedOnlyMesh(this.sun);
+      // Custom shader has no emissive channel — glow from its real output.
+      this.glowLayer.referenceMeshToUseItsOwnMaterial(this.sun);
     }
 
+    this.createSunHaloAndGodRays();
     this.createSunCorona();
   }
 
-  private drawSunSurface(texture: DynamicTexture, t: number): void {
-    const ctx = texture.getContext() as CanvasRenderingContext2D;
-    const S = 512;
+  /**
+   * Billboard halo sprite (lens-flare core + anamorphic streak) that doubles
+   * as the source mesh for the volumetric god-rays post process — the iconic
+   * "staring into the sun" shot from every space movie.
+   */
+  private createSunHaloAndGodRays(): void {
+    const haloTex = new DynamicTexture('sunHaloTex', 512, this.scene, false);
+    haloTex.hasAlpha = true;
+    this.sunHaloTexture = haloTex;
+    this.drawSunHalo(new Color3(1.0, 0.72, 0.25));
 
-    // Chromosphere gradient
-    const bg = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    bg.addColorStop(0,    '#FFE066');
-    bg.addColorStop(0.3,  '#FFB800');
-    bg.addColorStop(0.6,  '#FF7200');
-    bg.addColorStop(0.85, '#CC3800');
-    bg.addColorStop(1,    '#881800');
-    ctx.fillStyle = bg;
+    const halo = MeshBuilder.CreatePlane('sunHalo', { size: 15 }, this.scene);
+    halo.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    halo.position = Vector3.Zero();
+    halo.isPickable = false;
+    const haloMat = new StandardMaterial('sunHaloMat', this.scene);
+    haloMat.diffuseTexture = haloTex; // sampled by the god-rays pass
+    haloMat.emissiveTexture = haloTex;
+    haloMat.diffuseColor = Color3.Black();
+    haloMat.specularColor = Color3.Black();
+    haloMat.disableLighting = true;
+    haloMat.alphaMode = Engine.ALPHA_ADD;
+    haloMat.alpha = 0.98;
+    halo.material = haloMat;
+    this.sunHalo = halo;
+
+    try {
+      // NOTE: postProcessRatio must stay 1.0 — the VLS shader composites the
+      // whole scene through itself, so lowering it pixelates the entire frame.
+      // The occlusion pre-pass (passRatio) is safe to run at low resolution.
+      const godRays = new VolumetricLightScatteringPostProcess(
+        'godRays',
+        { postProcessRatio: 1.0, passRatio: 0.4 },
+        this.camera,
+        halo,
+        70,
+        Texture.BILINEAR_SAMPLINGMODE,
+        this.engine,
+        false,
+      );
+      godRays.exposure = 0.22;
+      godRays.decay = 0.96;
+      godRays.weight = 0.32;
+      godRays.density = 0.9;
+      this.godRays = godRays;
+    } catch (_e) {
+      // God rays unavailable (no float textures / WebGL limitations)
+    }
+  }
+
+  /** Paints the halo sprite: warm radial core, cool anamorphic streak, spikes. */
+  private drawSunHalo(tint: Color3): void {
+    if (!this.sunHaloTexture) return;
+    const ctx = this.sunHaloTexture.getContext() as CanvasRenderingContext2D;
+    const S = 512;
+    const c = S / 2;
+    const r = Math.round(255 * Math.min(1, tint.r * 1.05));
+    const g = Math.round(255 * Math.min(1, tint.g * 1.05));
+    const b = Math.round(255 * Math.min(1, tint.b * 1.05));
+
+    ctx.clearRect(0, 0, S, S);
+
+    // Warm radial core glow — tight falloff so it reads as glare, not fog
+    const core = ctx.createRadialGradient(c, c, 0, c, c, c * 0.92);
+    core.addColorStop(0,    'rgba(255,255,245,0.9)');
+    core.addColorStop(0.1,  `rgba(${r},${g},${b},0.55)`);
+    core.addColorStop(0.3,  `rgba(${r},${Math.round(g * 0.7)},${Math.round(b * 0.5)},0.12)`);
+    core.addColorStop(0.6,  `rgba(${r},${Math.round(g * 0.55)},${Math.round(b * 0.35)},0.03)`);
+    core.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
     ctx.fillRect(0, 0, S, S);
 
-    // Convection cells — reduced count for performance
-    for (let i = 0; i < 60; i++) {
-      const seed = i * 137.508;
-      const cx = (Math.sin(seed) * 0.5 + 0.5) * S;
-      const cy = (Math.cos(seed * 0.7) * 0.5 + 0.5) * S;
-      const r  = 10 + (i % 7) * 5;
-      const brightness = 0.55 + Math.sin(t * 0.4 + i) * 0.25;
-      const gg = Math.floor(220 * brightness);
-      const bb = Math.floor(60  * brightness);
-      const cellG = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      cellG.addColorStop(0,   `rgba(255,${gg},${bb},0.55)`);
-      cellG.addColorStop(1,   'rgba(0,0,0,0)');
-      ctx.fillStyle = cellG;
-      ctx.fillRect(0, 0, S, S);
-    }
+    // Anamorphic horizontal streak — cool blue, sci-fi signature
+    ctx.save();
+    ctx.translate(c, c);
+    ctx.scale(1, 0.045);
+    const streak = ctx.createRadialGradient(0, 0, 0, 0, 0, c * 0.98);
+    streak.addColorStop(0,   'rgba(235,245,255,0.65)');
+    streak.addColorStop(0.3, 'rgba(150,195,255,0.3)');
+    streak.addColorStop(1,   'rgba(90,140,255,0)');
+    ctx.fillStyle = streak;
+    ctx.fillRect(-c, -c, S, S * 24);
+    ctx.restore();
 
-    // Sunspots — reduced count
-    for (let i = 0; i < 8; i++) {
-      const seed = i * 317.4;
-      const sx = (Math.sin(seed * 1.3) * 0.4 + 0.5) * S;
-      const sy = (Math.cos(seed * 0.9) * 0.4 + 0.5) * S;
-      const sr = 10 + (i % 4) * 8;
-      const umbG = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-      umbG.addColorStop(0,   'rgba(30,8,0,0.88)');
-      umbG.addColorStop(0.6, 'rgba(70,20,0,0.5)');
-      umbG.addColorStop(1,   'rgba(0,0,0,0)');
-      ctx.fillStyle = umbG;
-      ctx.fillRect(0, 0, S, S);
-    }
+    // Soft vertical spike
+    ctx.save();
+    ctx.translate(c, c);
+    ctx.scale(0.035, 0.55);
+    const spike = ctx.createRadialGradient(0, 0, 0, 0, 0, c * 0.9);
+    spike.addColorStop(0,   'rgba(255,250,235,0.75)');
+    spike.addColorStop(0.4, `rgba(${r},${g},${b},0.3)`);
+    spike.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = spike;
+    ctx.fillRect(-S, -c, S * 30, S);
+    ctx.restore();
 
-    texture.update();
+    this.sunHaloTexture.update();
   }
 
   private createSunCorona(): void {
     // Inner corona — tight, hot white particles
-    const innerCorona = new ParticleSystem('sunCoronaInner', 400, this.scene);
+    const innerCorona = new ParticleSystem('sunCoronaInner', 260, this.scene);
     innerCorona.emitter = Vector3.Zero();
     innerCorona.particleEmitterType = new SphereParticleEmitter(4.2);
     const innerTex = new DynamicTexture('innerCoronaTex', 64, this.scene, false);
@@ -533,11 +675,11 @@ export class PlanetScene {
     ic.fillStyle = ig; ic.fillRect(0, 0, 64, 64);
     innerTex.update();
     innerCorona.particleTexture = innerTex;
-    innerCorona.minSize = 0.4; innerCorona.maxSize = 2.0;
-    innerCorona.minLifeTime = 1.5; innerCorona.maxLifeTime = 4;
-    innerCorona.emitRate = 90;
+    innerCorona.minSize = 0.4; innerCorona.maxSize = 1.6;
+    innerCorona.minLifeTime = 1.5; innerCorona.maxLifeTime = 3;
+    innerCorona.emitRate = 60;
     innerCorona.blendMode = ParticleSystem.BLENDMODE_ADD;
-    innerCorona.minEmitPower = 0.4; innerCorona.maxEmitPower = 2.0;
+    innerCorona.minEmitPower = 0.2; innerCorona.maxEmitPower = 0.9;
     innerCorona.updateSpeed = 0.02;
     innerCorona.color1 = new Color4(1, 0.98, 0.75, 1.0);
     innerCorona.color2 = new Color4(1, 0.82, 0.38, 0.75);
@@ -545,7 +687,7 @@ export class PlanetScene {
     innerCorona.start();
 
     // Outer corona — wide, wispy plasma streamers
-    const outerCorona = new ParticleSystem('sunCoronaOuter', 250, this.scene);
+    const outerCorona = new ParticleSystem('sunCoronaOuter', 140, this.scene);
     outerCorona.emitter = Vector3.Zero();
     outerCorona.particleEmitterType = new SphereParticleEmitter(4.8);
     const outerTex = new DynamicTexture('outerCoronaTex', 128, this.scene, false);
@@ -558,14 +700,16 @@ export class PlanetScene {
     oc.fillStyle = og; oc.fillRect(0, 0, 128, 128);
     outerTex.update();
     outerCorona.particleTexture = outerTex;
-    outerCorona.minSize = 1.5; outerCorona.maxSize = 6.0;
-    outerCorona.minLifeTime = 4; outerCorona.maxLifeTime = 10;
-    outerCorona.emitRate = 35;
+    outerCorona.minSize = 1.2; outerCorona.maxSize = 3.2;
+    outerCorona.minLifeTime = 2.5; outerCorona.maxLifeTime = 5;
+    outerCorona.emitRate = 22;
     outerCorona.blendMode = ParticleSystem.BLENDMODE_ADD;
-    outerCorona.minEmitPower = 1.0; outerCorona.maxEmitPower = 4.5;
+    // Low emit power keeps the streamers hugging the star instead of
+    // drifting across the frame as detached red blobs.
+    outerCorona.minEmitPower = 0.3; outerCorona.maxEmitPower = 1.2;
     outerCorona.updateSpeed = 0.015;
-    outerCorona.color1 = new Color4(1, 0.75, 0.3, 0.65);
-    outerCorona.color2 = new Color4(1, 0.45, 0.05, 0.4);
+    outerCorona.color1 = new Color4(1, 0.75, 0.3, 0.5);
+    outerCorona.color2 = new Color4(1, 0.45, 0.05, 0.3);
     outerCorona.colorDead = new Color4(0.8, 0.2, 0, 0);
     outerCorona.start();
   }
@@ -579,26 +723,51 @@ export class PlanetScene {
         [this.camera],
       );
 
-      // FXAA anti-aliasing — crisp edges
+      // FXAA anti-aliasing — crisp edges (2x MSAA + FXAA: cheaper than 4x)
       pipeline.fxaaEnabled = true;
-      pipeline.samples = 4;
+      pipeline.samples = 2;
 
-      // Bloom — subtle and cinematic (avoid full-scene haze)
+      // Bloom — soft halation around the sun, atmospheres and stars.
+      // The sun shader outputs HDR values (>1), so highlights bleed like film.
       pipeline.bloomEnabled = true;
-      pipeline.bloomThreshold = 0.82;
-      pipeline.bloomWeight    = 0.18;
+      pipeline.bloomThreshold = 0.72;
+      pipeline.bloomWeight    = 0.3;
       pipeline.bloomKernel    = 64;
       pipeline.bloomScale     = 0.5;
 
       // Image processing — "space cinematic" grade
       pipeline.imageProcessingEnabled = true;
       pipeline.imageProcessing.vignetteEnabled   = true;
-      pipeline.imageProcessing.vignetteWeight    = 2.2;
-      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0, 1);
+      pipeline.imageProcessing.vignetteWeight    = 2.6;
+      pipeline.imageProcessing.vignetteColor     = new Color4(0, 0, 0.02, 1);
       pipeline.imageProcessing.vignetteBlendMode = 1;
-      // Tone down the grade to avoid harsh contrast on HDR displays.
-      pipeline.imageProcessing.contrast  = 1.05;
-      pipeline.imageProcessing.exposure  = 0.9;
+      pipeline.imageProcessing.contrast  = 1.16;
+      pipeline.imageProcessing.exposure  = 1.12;
+
+      // Teal-shadow / warm-highlight color grade — the classic sci-fi look
+      const curves = new ColorCurves();
+      curves.globalSaturation   = 18;
+      curves.shadowsHue         = 210; // push shadows toward cold blue
+      curves.shadowsDensity     = 22;
+      curves.shadowsSaturation  = 12;
+      curves.highlightsHue      = 38;  // warm golden highlights
+      curves.highlightsDensity  = 14;
+      pipeline.imageProcessing.colorCurvesEnabled = true;
+      pipeline.imageProcessing.colorCurves = curves;
+
+      // Fine animated film grain — texture, not noise (kept subtle)
+      pipeline.grainEnabled = true;
+      pipeline.grain.intensity = 7;
+      pipeline.grain.animated = true;
+
+      // Whisper of chromatic aberration at the frame edges (anamorphic lens
+      // fringing) + sharpen so the center of frame stays crisp.
+      pipeline.chromaticAberrationEnabled = true;
+      pipeline.chromaticAberration.aberrationAmount = 12;
+      pipeline.chromaticAberration.radialIntensity = 0.85;
+      pipeline.sharpenEnabled = true;
+      pipeline.sharpen.edgeAmount = 0.3;
+      pipeline.sharpen.colorAmount = 1.0;
 
       // Depth of field can read as "blurry" on wide scenes.
       // Keep it OFF by default; it will be enabled when you want a cinematic focus pull.
@@ -611,155 +780,82 @@ export class PlanetScene {
       }
 
       this.cinematicPipeline = pipeline;
-
-      // NO chromatic aberration — splits RGB channels, makes edges look blurry
-      // NO film grain — adds noise that reads as blur
     } catch (_e) {
       // Post-processing unavailable in this environment
     }
   }
 
-  private createSpaceSkybox(scene: Scene): void {
-    // Galactic skybox (nebula) + stars rendered via particles for full 3-D depth
-    const skybox = MeshBuilder.CreateBox('skybox', { size: 2000 }, scene);
-    const skyboxMaterial = new StandardMaterial('skyboxMaterial', scene);
-    skyboxMaterial.backFaceCulling = false;
-    skyboxMaterial.disableLighting = true;
-    // Default to black so a missing texture never flashes white.
-    skyboxMaterial.emissiveColor = new Color3(0, 0, 0);
-    skyboxMaterial.diffuseColor  = new Color3(0, 0, 0);
-    skyboxMaterial.specularColor = new Color3(0, 0, 0);
+  /**
+   * Procedural deep-space dome rendered entirely on the GPU in one draw call:
+   * three parallax layers of twinkling stars, a clumpy milky-way band with
+   * dark dust lanes and a warm galactic core, plus layered colored nebulae.
+   * Replaces the old particle star field + particle nebulae (thousands of
+   * CPU-simulated quads) — massively cheaper AND far more cinematic.
+   */
+  private createCinematicSky(scene: Scene): void {
+    const sky = MeshBuilder.CreateSphere(
+      'skyDome',
+      { diameter: 3000, segments: 24, sideOrientation: Mesh.BACKSIDE },
+      scene,
+    );
+    const skyMat = new ShaderMaterial('skyMaterial', scene, 'cinematicSky', {
+      attributes: ['position'],
+      uniforms: ['worldViewProjection', 'time'],
+    });
+    skyMat.setFloat('time', 0);
+    skyMat.backFaceCulling = false;
+    sky.material = skyMat;
+    sky.isPickable = false;
+    sky.applyFog = false;
+    sky.alwaysSelectAsActiveMesh = true; // skip pointless frustum tests
+    sky.freezeWorldMatrix();
+    this.skyMaterial = skyMat;
 
-    // NOTE: use a relative asset path (Angular may be deployed under a sub-path).
-    // Intentionally keep the skybox solid black.
-    skyboxMaterial.emissiveTexture = null;
-
-    // Environment IBL is configured in setupEnvironmentIBL().
-
-    skybox.material = skyboxMaterial;
-    skybox.infiniteDistance = true;
-    skybox.isPickable = false;
+    // The dome must not occlude the god rays (it sits behind everything).
+    if (this.godRays) {
+      this.godRays.excludedMeshes.push(sky);
+    }
   }
 
-  private createStarField(): void {
-    const W = 700;
+  /** Sparse drifting dust motes near the system — foreground parallax depth. */
+  private createSpaceDust(): void {
+    const dustTex = new DynamicTexture('dustTex', 32, this.scene, false);
+    const dCtx = dustTex.getContext() as CanvasRenderingContext2D;
+    const dG = dCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    dG.addColorStop(0,   'rgba(255,255,255,1)');
+    dG.addColorStop(0.4, 'rgba(210,225,255,0.5)');
+    dG.addColorStop(1,   'rgba(0,0,0,0)');
+    dCtx.fillStyle = dG; dCtx.fillRect(0, 0, 32, 32);
+    dustTex.update();
 
-    // Shared star texture — bright core with soft halo
-    const starTex = new DynamicTexture('starTex', 64, this.scene, false);
-    const stCtx = starTex.getContext() as CanvasRenderingContext2D;
-    const stG = stCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    stG.addColorStop(0,    'rgba(255,255,255,1)');
-    stG.addColorStop(0.15, 'rgba(230,238,255,0.95)');
-    stG.addColorStop(0.4,  'rgba(200,215,255,0.55)');
-    stG.addColorStop(0.75, 'rgba(160,180,255,0.18)');
-    stG.addColorStop(1,    'rgba(0,0,0,0)');
-    stCtx.fillStyle = stG; stCtx.fillRect(0, 0, 64, 64);
-    starTex.update();
+    const dust = new ParticleSystem('spaceDust', 300, this.scene);
+    dust.emitter = Vector3.Zero();
+    dust.minEmitBox = new Vector3(-140, -60, -140);
+    dust.maxEmitBox = new Vector3(140, 60, 140);
+    dust.particleTexture = dustTex;
+    dust.minSize = 0.05; dust.maxSize = 0.22;
+    dust.minLifeTime = 18; dust.maxLifeTime = 34;
+    dust.emitRate = 11;
+    dust.blendMode = ParticleSystem.BLENDMODE_ADD;
+    dust.minEmitPower = 0.01; dust.maxEmitPower = 0.06;
+    dust.color1 = new Color4(0.75, 0.82, 1.0, 0.32);
+    dust.color2 = new Color4(0.95, 0.9, 0.8, 0.2);
+    dust.colorDead = new Color4(0.5, 0.55, 0.8, 0);
+    dust.preWarmCycles = 220; // field is already populated on first frame
+    dust.preWarmStepOffset = 8;
+    dust.start();
 
-    // Warm-tinted star texture (orange/red dwarfs)
-    const warmStarTex = new DynamicTexture('warmStarTex', 64, this.scene, false);
-    const wsCtx = warmStarTex.getContext() as CanvasRenderingContext2D;
-    const wsG = wsCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    wsG.addColorStop(0,    'rgba(255,240,200,1)');
-    wsG.addColorStop(0.2,  'rgba(255,210,140,0.85)');
-    wsG.addColorStop(0.5,  'rgba(255,160,80,0.35)');
-    wsG.addColorStop(1,    'rgba(0,0,0,0)');
-    wsCtx.fillStyle = wsG; wsCtx.fillRect(0, 0, 64, 64);
-    warmStarTex.update();
-
-    // Bright star texture — cross-shaped diffraction spike
-    const brightStarTex = new DynamicTexture('brightStarTex', 128, this.scene, false);
-    const bsCtx = brightStarTex.getContext() as CanvasRenderingContext2D;
-    const bsG = bsCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    bsG.addColorStop(0,    'rgba(255,255,255,1)');
-    bsG.addColorStop(0.1,  'rgba(220,235,255,0.9)');
-    bsG.addColorStop(0.4,  'rgba(180,200,255,0.4)');
-    bsG.addColorStop(0.8,  'rgba(140,170,255,0.1)');
-    bsG.addColorStop(1,    'rgba(0,0,0,0)');
-    bsCtx.fillStyle = bsG; bsCtx.fillRect(0, 0, 128, 128);
-    // Add diffraction spikes
-    bsCtx.strokeStyle = 'rgba(200,225,255,0.5)';
-    bsCtx.lineWidth = 1.5;
-    bsCtx.beginPath(); bsCtx.moveTo(64, 0); bsCtx.lineTo(64, 128); bsCtx.stroke();
-    bsCtx.beginPath(); bsCtx.moveTo(0, 64); bsCtx.lineTo(128, 64); bsCtx.stroke();
-    bsCtx.strokeStyle = 'rgba(200,225,255,0.25)';
-    bsCtx.beginPath(); bsCtx.moveTo(20, 20); bsCtx.lineTo(108, 108); bsCtx.stroke();
-    bsCtx.beginPath(); bsCtx.moveTo(108, 20); bsCtx.lineTo(20, 108); bsCtx.stroke();
-    brightStarTex.update();
-
-    // Layer 1 — Dense micro star field (3500 particles, cool-blue tint)
-    const stars = new ParticleSystem('stars', 1800, this.scene);
-    stars.emitter = Vector3.Zero();
-    stars.minEmitBox = new Vector3(-W, -W, -W);
-    stars.maxEmitBox = new Vector3(W, W, W);
-    stars.particleTexture = starTex;
-    stars.minSize = 0.08; stars.maxSize = 0.9;
-    stars.minLifeTime = 9999; stars.maxLifeTime = 9999;
-    stars.emitRate = 1800;
-    stars.blendMode = ParticleSystem.BLENDMODE_ADD;
-    stars.minEmitPower = 0; stars.maxEmitPower = 0;
-    stars.color1 = new Color4(0.85, 0.9, 1.0, 0.75);
-    stars.color2 = new Color4(0.95, 0.98, 1.0, 0.55);
-    stars.colorDead = new Color4(1, 1, 1, 0);
-    stars.gravity = Vector3.Zero();
-    stars.start();
-
-    // Layer 2 — Warm star field (2000 orange/red dwarfs)
-    const warmStars = new ParticleSystem('warmStars', 1000, this.scene);
-    warmStars.emitter = Vector3.Zero();
-    warmStars.minEmitBox = new Vector3(-W, -W, -W);
-    warmStars.maxEmitBox = new Vector3(W, W, W);
-    warmStars.particleTexture = warmStarTex;
-    warmStars.minSize = 0.1; warmStars.maxSize = 0.7;
-    warmStars.minLifeTime = 9999; warmStars.maxLifeTime = 9999;
-    warmStars.emitRate = 1000;
-    warmStars.blendMode = ParticleSystem.BLENDMODE_ADD;
-    warmStars.minEmitPower = 0; warmStars.maxEmitPower = 0;
-    warmStars.color1 = new Color4(1.0, 0.82, 0.55, 0.55);
-    warmStars.color2 = new Color4(1.0, 0.65, 0.35, 0.4);
-    warmStars.colorDead = new Color4(1, 1, 1, 0);
-    warmStars.gravity = Vector3.Zero();
-    warmStars.start();
-
-    // Layer 3 — Bright foreground stars with diffraction spikes (300 particles)
-    const brightStars = new ParticleSystem('brightStars', 160, this.scene);
-    brightStars.emitter = Vector3.Zero();
-    brightStars.minEmitBox = new Vector3(-W * 0.8, -W * 0.8, -W * 0.8);
-    brightStars.maxEmitBox = new Vector3(W * 0.8, W * 0.8, W * 0.8);
-    brightStars.particleTexture = brightStarTex;
-    brightStars.minSize = 1.5; brightStars.maxSize = 4.5;
-    brightStars.minLifeTime = 9999; brightStars.maxLifeTime = 9999;
-    brightStars.emitRate = 160;
-    brightStars.blendMode = ParticleSystem.BLENDMODE_ADD;
-    brightStars.minEmitPower = 0; brightStars.maxEmitPower = 0;
-    brightStars.color1 = new Color4(0.95, 0.97, 1.0, 0.95);
-    brightStars.color2 = new Color4(1.0, 0.92, 0.75, 0.85);
-    brightStars.colorDead = new Color4(1, 1, 1, 0);
-    brightStars.gravity = Vector3.Zero();
-    brightStars.start();
-
-    this.starFieldParticleSystem = stars;
-
-    // Animate bright stars twinkling — pre-allocated Color4 to avoid per-frame GC pressure
-    let twinkleTime = 0;
-    const twinkleColor1 = new Color4(0.95, 0.97, 1.0, 0.9);
-    const twinkleColor2 = new Color4(1.0, 0.92, 0.75, 0.8);
-    this.scene.registerBeforeRender(() => {
-      twinkleTime += 0.018;
-      const twinkle  = 0.75 + 0.25 * Math.sin(twinkleTime * 1.7);
-      const twinkle2 = 0.75 + 0.25 * Math.sin(twinkleTime * 2.3 + 1.4);
-      twinkleColor1.a = 0.9 * twinkle;
-      twinkleColor2.a = 0.8 * twinkle2;
-      brightStars.color1 = twinkleColor1;
-      brightStars.color2 = twinkleColor2;
-    });
+    this.starFieldParticleSystem = dust;
   }
 
   private createMeteorSystem(): void {
-    // Create meteors that randomly appear and fly across the scene - slower for cozy vibe
+    // Rare, slow comets with sun-blown twin tails — an event, not confetti
     this.meteorInterval = window.setInterval(() => {
       this.spawnMeteor();
-    }, 8000); // Increased from 3000ms to 8000ms for less frequent, more peaceful meteor activity
+    }, 20000);
+    // First one arrives early so new visitors see it
+    const firstComet = window.setTimeout(() => this.spawnMeteor(), 6000);
+    this.meteorTimeouts.push(firstComet);
   }
 
   private spawnMeteor(): void {
@@ -779,27 +875,21 @@ export class PlanetScene {
       -startPos.z + (Math.random() - 0.5) * 30,
     );
 
-    // Create meteor mesh
+    // Comet nucleus — small, icy-bright
     const meteor = MeshBuilder.CreateSphere(
       'meteor',
-      { diameter: 0.5, segments: 16 },
+      { diameter: 0.4, segments: 8 },
       this.scene,
     );
     meteor.position = startPos.clone();
 
-    // Meteor material — glowing hot rock
     const meteorMat = new StandardMaterial('meteorMat', this.scene);
-    meteorMat.emissiveColor = new Color3(1.0, 0.7, 0.2);
-    meteorMat.diffuseColor = new Color3(0.6, 0.35, 0.15);
+    meteorMat.emissiveColor = new Color3(0.85, 0.95, 1.0);
+    meteorMat.diffuseColor = new Color3(0.5, 0.55, 0.6);
+    meteorMat.specularColor = Color3.Black();
     meteor.material = meteorMat;
 
-    // Create trail particle system for meteor
-    const trail = new ParticleSystem('meteorTrail', 350, this.scene);
-    trail.emitter = meteor;
-    trail.minEmitBox = new Vector3(0, 0, 0);
-    trail.maxEmitBox = new Vector3(0, 0, 0);
-
-    // Trail texture — bright hot core
+    // ── Dust tail — wide, warm-white, pushed AWAY from the sun ──────────
     const trailTexture = new DynamicTexture(
       'trailTexture',
       64,
@@ -808,38 +898,73 @@ export class PlanetScene {
     );
     const ctx = trailTexture.getContext();
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0,   'rgba(255, 240, 180, 1)');
-    gradient.addColorStop(0.3, 'rgba(255, 160, 60, 0.8)');
-    gradient.addColorStop(0.6, 'rgba(255, 80, 10, 0.4)');
-    gradient.addColorStop(1,   'rgba(180, 30, 0, 0)');
+    gradient.addColorStop(0,   'rgba(255, 250, 235, 1)');
+    gradient.addColorStop(0.3, 'rgba(230, 225, 205, 0.7)');
+    gradient.addColorStop(0.7, 'rgba(190, 190, 200, 0.25)');
+    gradient.addColorStop(1,   'rgba(120, 130, 160, 0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 64, 64);
     trailTexture.update();
 
+    const trail = new ParticleSystem('meteorTrail', 260, this.scene);
+    trail.emitter = meteor;
+    trail.minEmitBox = new Vector3(-0.1, -0.1, -0.1);
+    trail.maxEmitBox = new Vector3(0.1, 0.1, 0.1);
     trail.particleTexture = trailTexture;
-    trail.minSize = 0.4;
-    trail.maxSize = 1.8;
-    trail.minLifeTime = 0.4;
-    trail.maxLifeTime = 1.8;
-    trail.emitRate = 180;
+    trail.minSize = 0.3;
+    trail.maxSize = 1.3;
+    trail.minLifeTime = 1.2;
+    trail.maxLifeTime = 2.6;
+    trail.emitRate = 90;
     trail.blendMode = ParticleSystem.BLENDMODE_ADD;
     trail.gravity = new Vector3(0, 0, 0);
-    trail.direction1 = new Vector3(-1, 0, 0);
-    trail.direction2 = new Vector3(-1, 0, 0);
-    trail.minEmitPower = 0.2;
-    trail.maxEmitPower = 0.8;
+    trail.direction1 = new Vector3(1, 0, 0);
+    trail.direction2 = new Vector3(1, 0, 0);
+    trail.minEmitPower = 1.2;
+    trail.maxEmitPower = 2.6;
     trail.updateSpeed = 0.02;
-
-    trail.color1 = new Color4(1, 0.9, 0.5, 1);
-    trail.color2 = new Color4(1, 0.55, 0.15, 1);
-    trail.colorDead = new Color4(0.6, 0.15, 0, 0);
-
+    trail.color1 = new Color4(1, 0.98, 0.9, 0.8);
+    trail.color2 = new Color4(0.85, 0.85, 0.9, 0.5);
+    trail.colorDead = new Color4(0.4, 0.45, 0.6, 0);
     trail.start();
     this.meteorParticleSystems.push(trail);
 
-    // Animate meteor movement
+    // ── Ion tail — thin, electric blue, faster and straighter ───────────
+    const ion = new ParticleSystem('meteorIonTail', 200, this.scene);
+    ion.emitter = meteor;
+    ion.minEmitBox = new Vector3(-0.04, -0.04, -0.04);
+    ion.maxEmitBox = new Vector3(0.04, 0.04, 0.04);
+    ion.particleTexture = trailTexture;
+    ion.minSize = 0.12;
+    ion.maxSize = 0.45;
+    ion.minLifeTime = 0.9;
+    ion.maxLifeTime = 1.8;
+    ion.emitRate = 110;
+    ion.blendMode = ParticleSystem.BLENDMODE_ADD;
+    ion.direction1 = new Vector3(1, 0, 0);
+    ion.direction2 = new Vector3(1, 0, 0);
+    ion.minEmitPower = 4.0;
+    ion.maxEmitPower = 7.0;
+    ion.updateSpeed = 0.02;
+    ion.color1 = new Color4(0.45, 0.7, 1.0, 0.9);
+    ion.color2 = new Color4(0.25, 0.5, 1.0, 0.5);
+    ion.colorDead = new Color4(0.1, 0.2, 0.8, 0);
+    ion.start();
+    this.meteorParticleSystems.push(ion);
+
+    // Both tails always stream anti-sunward (sun sits at the origin) — the
+    // detail that makes it read as a comet rather than a firework.
+    const tailUpdate = this.scene.onBeforeRenderObservable.add(() => {
+      const away = meteor.position.clone().normalize();
+      trail.direction1.copyFrom(away.scale(0.85).add(new Vector3(0.1, 0.08, -0.1)));
+      trail.direction2.copyFrom(away.scale(1.15).add(new Vector3(-0.1, -0.08, 0.1)));
+      ion.direction1.copyFrom(away);
+      ion.direction2.copyFrom(away);
+    });
+
+    // Animate comet movement — a slow, stately crossing
     const distance_total = Vector3.Distance(startPos, endPos);
-    const speed = 2; // Units per second
+    const speed = 12; // Units per second (~25s to cross the system)
     const duration = (distance_total / speed) * 1000; // Convert to milliseconds
 
     // Create animation
@@ -857,18 +982,22 @@ export class PlanetScene {
     anim.setKeys(animKeys);
     meteor.animations.push(anim);
 
-    // Run animation
-    this.scene.beginAnimation(meteor, 0, 60, false, 1, () => {
+    // Run animation (speed ratio converts the 60-frame track to `duration`)
+    this.scene.beginAnimation(meteor, 0, 60, false, 1000 / duration, () => {
       // Cleanup after animation
       trail.stop();
+      ion.stop();
+      this.scene.onBeforeRenderObservable.remove(tailUpdate);
       const timeoutId = window.setTimeout(() => {
-        meteor.dispose();
-        trail.dispose();
-        const index = this.meteorParticleSystems.indexOf(trail);
-        if (index > -1) {
-          this.meteorParticleSystems.splice(index, 1);
+        meteor.dispose(false, true);
+        for (const sys of [trail, ion]) {
+          sys.dispose();
+          const index = this.meteorParticleSystems.indexOf(sys);
+          if (index > -1) {
+            this.meteorParticleSystems.splice(index, 1);
+          }
         }
-      }, 2000);
+      }, 3000);
       this.meteorTimeouts.push(timeoutId);
     });
   }
@@ -923,7 +1052,7 @@ export class PlanetScene {
         // (Keep segments bounded for performance on mid-range GPUs.)
         planet = MeshBuilder.CreateSphere(
           id,
-          { diameter: data.size, segments: 64 },
+          { diameter: data.size, segments: 48 },
           this.scene,
         );
         break;
@@ -938,69 +1067,59 @@ export class PlanetScene {
     // Ensure planet is pickable
     planet.isPickable = true;
 
-    // ── Cinematic PBR material — physically-based, photorealistic ──────────
-    const material = new PBRMaterial(`mat_${id}`, this.scene);
+    // Deterministic per-planet seed + axial tilt (movie planets never sit
+    // perfectly upright)
+    const seed = this.hashString(id);
+    planet.rotation.z = ((seed % 100) / 100 - 0.5) * 0.55;
 
-    // High-detail procedural surface texture
-    const planetTexture = this.createPlanetTexture(data.name, data.color);
-    material.albedoTexture = planetTexture;
-    material.albedoColor   = Color3.FromHexString(data.color).scale(1.05);
+    const kind = this.getPlanetKind(data);
 
-    // Roughness/metallic tuned per planet type
-    const isGasGiant   = ['Jupiter','Saturn','Uranus','Neptune'].includes(data.name);
-    const isRocky      = ['Mercury','Mars','Moon'].includes(data.name);
-    const isIcy        = data.name === 'Uranus' || data.name.toLowerCase().includes('ice') || data.name.toLowerCase().includes('frost');
-    material.metallic  = isGasGiant ? 0.0 : isRocky ? 0.03 : 0.06;
-    material.roughness = isGasGiant ? 0.5 : isIcy ? 0.28 : isRocky ? 0.82 : 0.65;
-
-    // High-detail bump map — strong surface relief
-    const bumpTexture = this.createBumpTexture();
-    material.bumpTexture       = bumpTexture;
-    material.bumpTexture.level = isGasGiant ? 1.8 : 4.5;
-
-    // Subtle emissive — atmospheric scatter brightens the planet surface
-    material.emissiveColor     = Color3.FromHexString(data.color).scale(0.06);
-    material.emissiveIntensity = 1.0;
-
-    // Maximum PBR quality settings — cinematic AAA look
-    material.specularIntensity    = isGasGiant ? 0.5 : 0.85;
-    material.directIntensity      = 2.2;
-    material.environmentIntensity = 0.5;
-    material.microSurface         = isGasGiant ? 0.97 : 0.92;
-
-    // Environment reflections
-    if (this.scene.environmentTexture) {
-      material.reflectionTexture  = this.scene.environmentTexture;
-      material.reflectivityColor  = new Color3(0.06, 0.06, 0.07);
+    if (shape === 'sphere') {
+      // ── Procedural GPU planet surface — continents, storm bands, magma…
+      const material = new ShaderMaterial(`mat_${id}`, this.scene, 'cinematicPlanet', {
+        attributes: ['position', 'normal'],
+        uniforms: [
+          'world', 'worldViewProjection', 'cameraPosition', 'sunPosition',
+          'baseColor', 'kind', 'seed', 'time', 'nightLights',
+        ],
+      });
+      material.setVector3('sunPosition', Vector3.Zero());
+      material.setColor3('baseColor', Color3.FromHexString(data.color));
+      material.setFloat('kind', kind.kind);
+      material.setFloat('seed', (seed % 1000) / 41.7);
+      material.setFloat('time', 0);
+      material.setFloat('nightLights', kind.nightLights ? 1 : 0);
+      material.backFaceCulling = true;
+      planet.material = material;
+      this.planetShaderMats.push(material);
+    } else {
+      // ── Geometric worlds keep the PBR + canvas-texture look ───────────
+      const material = new PBRMaterial(`mat_${id}`, this.scene);
+      const planetTexture = this.createPlanetTexture(data.name, data.color);
+      material.albedoTexture = planetTexture;
+      material.albedoColor   = Color3.FromHexString(data.color).scale(1.05);
+      material.metallic  = 0.06;
+      material.roughness = 0.6;
+      const bumpTexture = this.createBumpTexture();
+      material.bumpTexture       = bumpTexture;
+      material.bumpTexture.level = 1.6;
+      material.usePhysicalLightFalloff = false;
+      material.emissiveColor     = Color3.FromHexString(data.color).scale(0.08);
+      material.directIntensity   = 1.7;
+      material.environmentIntensity = 0.4;
+      material.alpha             = 1.0;
+      material.alphaMode         = Engine.ALPHA_DISABLE;
+      material.transparencyMode  = null;
+      planet.material = material;
     }
-
-    // Fully opaque
-    material.alpha           = 1.0;
-    material.alphaMode       = Engine.ALPHA_DISABLE;
-    material.transparencyMode = null;
-
-    // Subsurface scattering for planets with thick atmospheres / ice
-    const sssEnabled = ['Earth','Venus','Jupiter','Uranus','Neptune'].includes(data.name)
-                    || isIcy;
-    if (sssEnabled) {
-      material.subSurface.isTranslucencyEnabled = true;
-      material.subSurface.translucencyIntensity = isGasGiant ? 0.45 : 0.22;
-      material.subSurface.tintColor = Color3.FromHexString(data.color).scale(0.6);
-    }
-
-    planet.material = material;
-
-    // Shadows: only enable for reasonably sized/close planets.
-    planet.receiveShadows = true;
-    this.sunShadowGenerator?.addShadowCaster(planet, true);
 
     // Atmosphere + clouds (for spherical planets only)
     if (shape === 'sphere') {
-      const atmo = this.addAtmosphereLayer(planet, data);
-      const clouds = this.addCloudLayer(planet, data);
-      this.sunShadowGenerator?.addShadowCaster(clouds, true);
-      // Atmosphere is additive glow; don't cast/receive shadows.
-      atmo.receiveShadows = false;
+      this.addAtmosphereLayer(planet, data, kind.kind);
+      // Clouds only where they make sense — living/ocean/ice worlds.
+      if (kind.kind === 4 || kind.kind === 2) {
+        this.addCloudLayer(planet, data);
+      }
     }
 
     // Store actual radius for later use
@@ -1066,43 +1185,115 @@ export class PlanetScene {
     return planet;
   }
 
-  private addAtmosphereLayer(planet: Mesh, data: PlanetData): Mesh {
-    // Atmospheric scattering approximation:
-    // Render a slightly larger shell with additive blending, and use Fresnel to
-    // brighten the limb (edge) more than the center.
-    const radius = data.size / 2;
+  /** Simple deterministic string hash for per-planet seeds. */
+  private hashString(s: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return Math.abs(h);
+  }
+
+  /**
+   * Classifies a planet into a shader surface type.
+   * kind: 0 rocky · 1 gas · 2 ice · 3 lava · 4 terra · 5 tech
+   */
+  private getPlanetKind(data: PlanetData): { kind: number; nightLights: boolean } {
+    const n = data.name;
+    const has = (...words: string[]) => words.some((w) => n.includes(w));
+
+    if (n === 'Earth') return { kind: 4, nightLights: true };
+    if (has('Mercury', 'Mars', 'Moon')) return { kind: 0, nightLights: false };
+    if (has('Venus', 'Jupiter', 'Saturn', 'Uranus', 'Neptune')) {
+      return { kind: 1, nightLights: false };
+    }
+    if (has('Pyros', 'Magmara', 'Blazeon', 'Ember', 'Inferno')) {
+      return { kind: 3, nightLights: false };
+    }
+    if (has('Luminos', 'Celestia')) return { kind: 3, nightLights: false };
+    if (has('Crystalia', 'Prisma', 'Frost', 'Glacia', 'Ice')) {
+      return { kind: 2, nightLights: false };
+    }
+    if (has('Neptara', 'Tidalis', 'Marinius', 'Aqua')) {
+      return { kind: 4, nightLights: false };
+    }
+    if (has('Floralis', 'Junglios', 'Vineworld', 'Terra')) {
+      return { kind: 4, nightLights: false };
+    }
+    if (has('Cubix', 'Octara', 'Dodeca', 'Icosa', 'Cylios')) {
+      return { kind: 5, nightLights: true };
+    }
+
+    // Fallback: big planets read as gas giants, blue ones as ocean worlds,
+    // the rest as rocky.
+    if (data.size >= 3.5) return { kind: 1, nightLights: false };
+    const c = Color3.FromHexString(data.color);
+    if (c.b > c.r && c.b > c.g) return { kind: 4, nightLights: false };
+    return { kind: 0, nightLights: false };
+  }
+
+  /**
+   * View-dependent atmospheric scattering shell. The limb glows where sunlight
+   * grazes it and fades into the night side — the classic movie-planet rim.
+   */
+  private addAtmosphereLayer(planet: Mesh, data: PlanetData, kind: number = 0): Mesh {
     const atmo = MeshBuilder.CreateSphere(
       `${planet.name}_atmosphere`,
-      { diameter: data.size * 1.06, segments: 64 },
+      { diameter: data.size * 1.09, segments: 48 },
       this.scene,
     );
     atmo.parent = planet;
     atmo.isPickable = false;
 
-    const atmoMat = new StandardMaterial(`${planet.name}_atmoMat`, this.scene);
-    atmoMat.backFaceCulling = false;
-    atmoMat.alpha = 0.9;
-    atmoMat.alphaMode = Engine.ALPHA_ADD;
-    atmoMat.disableLighting = false;
-    atmoMat.emissiveColor = Color3.FromHexString(data.color).scale(0.35);
-    atmoMat.diffuseColor = Color3.Black();
-    atmoMat.specularColor = Color3.Black();
-
-    // Fresnel makes the shell brighter on the limb (edge) and darker in the center.
-    const fresnel = new FresnelParameters();
-    fresnel.bias = 0.1;
-    fresnel.power = 4.0;
-    fresnel.leftColor = Color3.Black();
-    fresnel.rightColor = Color3.White();
-    atmoMat.emissiveFresnelParameters = fresnel;
-
-    atmo.material = atmoMat;
-
-    if (this.glowLayer) {
-      this.glowLayer.addIncludedOnlyMesh(atmo);
+    // Atmosphere tint follows the world type: lava worlds smolder orange,
+    // everything else scatters toward blue like real air.
+    const c = Color3.FromHexString(data.color);
+    let tint: Color3;
+    if (kind === 3) {
+      tint = new Color3(
+        Math.min(1, c.r * 0.7 + 0.45),
+        Math.min(1, c.g * 0.5 + 0.16),
+        Math.min(1, c.b * 0.3 + 0.05),
+      );
+    } else {
+      tint = new Color3(
+        Math.min(1, c.r * 0.55 + 0.18),
+        Math.min(1, c.g * 0.6 + 0.26),
+        Math.min(1, c.b * 0.7 + 0.42),
+      );
     }
+    atmo.material = this.makeAtmosphereRimMaterial(
+      `${planet.name}_atmoMat`, tint, 1.6, 3.4,
+    );
+
+    // Additive shells must not stamp occluders into the god-ray pass.
+    if (this.godRays) this.godRays.excludedMeshes.push(atmo);
 
     return atmo;
+  }
+
+  private makeAtmosphereRimMaterial(
+    name: string,
+    color: Color3,
+    strength: number,
+    falloff: number,
+  ): ShaderMaterial {
+    const mat = new ShaderMaterial(name, this.scene, 'atmosphereRim', {
+      attributes: ['position', 'normal'],
+      uniforms: [
+        'world', 'worldViewProjection', 'cameraPosition',
+        'sunPosition', 'atmoColor', 'atmoStrength', 'atmoFalloff',
+      ],
+      needAlphaBlending: true,
+    });
+    mat.setVector3('sunPosition', Vector3.Zero());
+    mat.setColor3('atmoColor', color);
+    mat.setFloat('atmoStrength', strength);
+    mat.setFloat('atmoFalloff', falloff);
+    mat.alphaMode = Engine.ALPHA_ADD;
+    mat.backFaceCulling = true;
+    return mat;
   }
 
   private addCloudLayer(planet: Mesh, data: PlanetData): Mesh {
@@ -1111,7 +1302,7 @@ export class PlanetScene {
     // For real 4K cloud maps, replace the DynamicTexture with `new Texture(...)`.
     const clouds = MeshBuilder.CreateSphere(
       `${planet.name}_clouds`,
-      { diameter: data.size * 1.025, segments: 64 },
+      { diameter: data.size * 1.025, segments: 32 },
       this.scene,
     );
     clouds.parent = planet;
@@ -1120,9 +1311,11 @@ export class PlanetScene {
     const cloudsMat = new PBRMaterial(`${planet.name}_cloudMat`, this.scene);
     cloudsMat.metallic = 0;
     cloudsMat.roughness = 1;
-    cloudsMat.alpha = 0.55;
+    cloudsMat.alpha = 0.42;
     cloudsMat.alphaMode = Engine.ALPHA_COMBINE;
-    cloudsMat.emissiveColor = new Color3(0.15, 0.18, 0.22);
+    // Near-zero emissive: clouds should be LIT by the sun, not self-glow,
+    // or the whole planet disc washes out to a pale veil.
+    cloudsMat.emissiveColor = new Color3(0.03, 0.04, 0.05);
     cloudsMat.environmentIntensity = 0.15;
 
     const cloudTex = new DynamicTexture(`${planet.name}_cloudTex`, 256, this.scene, false);
@@ -1151,12 +1344,17 @@ export class PlanetScene {
 
     clouds.material = cloudsMat;
 
-    clouds.receiveShadows = true;
-
-    // Slow cloud rotation.
-    this.scene.registerBeforeRender(() => {
-      clouds.rotation.y += 0.0008;
+    // Slow cloud rotation — unregistered when the planet is disposed so
+    // galaxy switches don't accumulate dead callbacks.
+    const rotateClouds = () => {
+      clouds.rotation.y += 0.0008 * this.scene.getAnimationRatio();
+    };
+    this.scene.registerBeforeRender(rotateClouds);
+    clouds.onDisposeObservable.add(() => {
+      this.scene.unregisterBeforeRender(rotateClouds);
     });
+
+    if (this.godRays) this.godRays.excludedMeshes.push(clouds);
 
     return clouds;
   }
@@ -1266,13 +1464,21 @@ export class PlanetScene {
     const texture = new DynamicTexture('bumpTex', 512, this.scene, false);
     const ctx = texture.getContext() as CanvasRenderingContext2D;
 
-    // Create noise pattern for bumps
-    for (let x = 0; x < 512; x += 4) {
-      for (let y = 0; y < 512; y += 4) {
-        const brightness = Math.random() * 100 + 100;
-        ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness})`;
-        ctx.fillRect(x, y, 4, 4);
-      }
+    // Neutral base, then layered soft blobs — reads as rolling terrain
+    // instead of pixel noise when lit by the sun.
+    ctx.fillStyle = 'rgb(128,128,128)';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 240; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const r = 6 + Math.random() * 34;
+      const up = Math.random() > 0.5;
+      const a = 0.08 + Math.random() * 0.14;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, up ? `rgba(220,220,220,${a})` : `rgba(40,40,40,${a})`);
+      grad.addColorStop(1, 'rgba(128,128,128,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
     }
 
     texture.update();
@@ -1716,37 +1922,20 @@ export class PlanetScene {
     scale: number,
     radius: number,
   ): void {
-    // Outer halo — large, very transparent
-    const outerAtmo = MeshBuilder.CreateSphere(
-      `atmoOuter_${planet.name}`,
-      { diameter: radius * 2 * scale * 1.35, segments: 32 },
-      this.scene,
-    );
-    outerAtmo.parent = planet;
-    outerAtmo.position = Vector3.Zero();
-    outerAtmo.isPickable = false;
-    const outerMat = new StandardMaterial(`atmoOuterMat_${planet.name}`, this.scene);
-    outerMat.diffuseColor  = new Color3(0, 0, 0);
-    outerMat.emissiveColor = color.scale(0.35);
-    outerMat.alpha = 0.10;
-    outerMat.backFaceCulling = false;
-    outerAtmo.material = outerMat;
-
-    // Inner halo — tighter, more vivid
-    const atmo = MeshBuilder.CreateSphere(
+    // Single soft outer halo using the scattering rim shader — replaces the
+    // old pair of alpha-blended shells (half the overdraw, better look).
+    const halo = MeshBuilder.CreateSphere(
       `atmo_${planet.name}`,
       { diameter: radius * 2 * scale, segments: 32 },
       this.scene,
     );
-    atmo.parent = planet;
-    atmo.position = Vector3.Zero();
-    atmo.isPickable = false;
-    const atmoMat = new StandardMaterial(`atmoMat_${planet.name}`, this.scene);
-    atmoMat.diffuseColor  = new Color3(0, 0, 0);
-    atmoMat.emissiveColor = color.scale(0.75);
-    atmoMat.alpha = 0.25;
-    atmoMat.backFaceCulling = false;
-    atmo.material = atmoMat;
+    halo.parent = planet;
+    halo.position = Vector3.Zero();
+    halo.isPickable = false;
+    halo.material = this.makeAtmosphereRimMaterial(
+      `atmoMat_${planet.name}`, color, 1.0, 2.4,
+    );
+    if (this.godRays) this.godRays.excludedMeshes.push(halo);
   }
 
   private addCloudParticles(planet: Mesh, color: Color3, radius: number): void {
@@ -1854,72 +2043,81 @@ export class PlanetScene {
   }
 
   private addRings(planet: Mesh, radius: number): void {
-    // Photorealistic Saturn rings — multiple band layers with proper physics-based appearance
-    const ringDefs = [
-      // [innerScale, outerScale, opacity, colorR, colorG, colorB, label]
-      { inner: 1.28, outer: 1.52, alpha: 0.18, r: 0.62, g: 0.55, b: 0.42, name: 'D' },
-      { inner: 1.52, outer: 1.95, alpha: 0.55, r: 0.82, g: 0.73, b: 0.58, name: 'C' },
-      { inner: 1.95, outer: 2.85, alpha: 0.80, r: 0.92, g: 0.85, b: 0.68, name: 'B' },
-      { inner: 2.85, outer: 2.92, alpha: 0.05, r: 0.50, g: 0.45, b: 0.38, name: 'CasDiv' },
-      { inner: 2.92, outer: 3.45, alpha: 0.62, r: 0.78, g: 0.72, b: 0.58, name: 'A' },
-      { inner: 3.45, outer: 3.58, alpha: 0.12, r: 0.55, g: 0.50, b: 0.42, name: 'Encke' },
-      { inner: 3.62, outer: 3.82, alpha: 0.22, r: 0.65, g: 0.58, b: 0.48, name: 'F' },
+    // One flat annulus with hundreds of fine concentric bands painted into a
+    // single texture — reads like actual Saturn photography instead of the
+    // old stack of seven glowing donuts.
+    const outerScale = 3.8;
+    const innerScale = 1.35;
+    const S = 1024;
+    const tex = new DynamicTexture(`ringsTex_${planet.name}`, S, this.scene, true);
+    tex.hasAlpha = true;
+    const ctx = tex.getContext() as CanvasRenderingContext2D;
+    const c = S / 2;
+
+    ctx.clearRect(0, 0, S, S);
+
+    // Named gaps (Cassini/Encke analogues) as fractions of the ring span
+    const gaps = [
+      { at: 0.62, w: 0.045 },
+      { at: 0.83, w: 0.015 },
+      { at: 0.35, w: 0.02 },
     ];
 
-    for (const def of ringDefs) {
-      const innerR = radius * def.inner;
-      const outerR = radius * def.outer;
-      const midR   = (innerR + outerR) / 2;
-      const thick  = (outerR - innerR);
-
-      const ring = MeshBuilder.CreateTorus(
-        `ring_${def.name}_${planet.name}`,
-        { diameter: midR * 2, thickness: thick, tessellation: 256 },
-        this.scene,
-      );
-      ring.parent = planet;
-      ring.position = Vector3.Zero();
-      ring.rotation.x = Math.PI / 2 + 0.44; // Saturn axial tilt ~26.7°
-      ring.isPickable = false;
-
-      const ringTex = new DynamicTexture(`ringTex_${def.name}`, 1024, this.scene, false);
-      const rc = ringTex.getContext() as CanvasRenderingContext2D;
-
-      // Base ring color
-      rc.fillStyle = `rgba(${Math.floor(def.r*255)},${Math.floor(def.g*255)},${Math.floor(def.b*255)},1)`;
-      rc.fillRect(0, 0, 1024, 1024);
-
-      // Radial density bands
-      for (let i = 0; i < 1024; i++) {
-        const t = i / 1024;
-        const density = 0.55 + Math.sin(t * Math.PI * 12) * 0.2
-                             + Math.sin(t * Math.PI * 37) * 0.08
-                             + Math.sin(t * Math.PI * 91) * 0.04
-                             + Math.cos(t * Math.PI * 5)  * 0.12;
-        const alpha = Math.max(0, Math.min(1, density));
-        const br = Math.floor(def.r * 255 * density);
-        const bg = Math.floor(def.g * 255 * density);
-        const bb = Math.floor(def.b * 255 * density);
-        rc.fillStyle = `rgba(${br},${bg},${bb},${alpha})`;
-        rc.fillRect(i, 0, 1, 1024);
+    const rInPx = (innerScale / outerScale) * c;
+    for (let px = Math.floor(rInPx); px < c; px++) {
+      const t = (px - rInPx) / (c - rInPx); // 0 inner → 1 outer
+      // Layered sine density — fine grooves over broad bands
+      let density =
+        0.5 +
+        Math.sin(t * Math.PI * 14) * 0.16 +
+        Math.sin(t * Math.PI * 43 + 1.7) * 0.10 +
+        Math.sin(t * Math.PI * 90 + 0.4) * 0.06 +
+        Math.cos(t * Math.PI * 6) * 0.14;
+      // Broad structure: C ring translucent, B ring dense, A ring medium
+      density *= t < 0.25 ? 0.45 + t : t > 0.85 ? 1.4 - t : 1.0;
+      // Carve the gaps
+      for (const gap of gaps) {
+        const d = Math.abs(t - gap.at) / gap.w;
+        if (d < 1) density *= d * d;
       }
-      // Subtle horizontal noise for ice/rock variation
-      for (let j = 0; j < 60; j++) {
-        const y = Math.random() * 1024;
-        const h = Math.random() * 4 + 1;
-        const a = Math.random() * 0.12;
-        rc.fillStyle = `rgba(255,248,220,${a})`;
-        rc.fillRect(0, y, 1024, h);
-      }
-      ringTex.update();
-
-      const ringMat = new StandardMaterial(`ringMat_${def.name}_${planet.name}`, this.scene);
-      ringMat.diffuseTexture  = ringTex;
-      ringMat.emissiveColor   = new Color3(def.r * 0.28, def.g * 0.25, def.b * 0.18);
-      ringMat.alpha           = def.alpha;
-      ringMat.backFaceCulling = false;
-      ring.material = ringMat;
+      // Soft outer/inner edges
+      density *= Math.min(1, t * 12) * Math.min(1, (1 - t) * 8);
+      const a = Math.max(0, Math.min(0.92, density));
+      // Icy cream color, slightly warmer toward the planet
+      const warm = 1 - t * 0.25;
+      const rr = Math.round(232 * warm);
+      const gg = Math.round(215 * warm);
+      const bb = Math.round(178 * warm * (0.92 + t * 0.15));
+      ctx.strokeStyle = `rgba(${rr},${gg},${bb},${a})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(c, c, px, 0, Math.PI * 2);
+      ctx.stroke();
     }
+    tex.update();
+
+    const ring = MeshBuilder.CreatePlane(
+      `rings_${planet.name}`,
+      { size: radius * 2 * outerScale },
+      this.scene,
+    );
+    ring.parent = planet;
+    ring.position = Vector3.Zero();
+    ring.rotation.x = Math.PI / 2; // equatorial plane (planet carries the tilt)
+    ring.isPickable = false;
+
+    const ringMat = new StandardMaterial(`ringsMat_${planet.name}`, this.scene);
+    // Rings sit edge-on to the sun, so diffuse lighting dies at grazing
+    // angles — render them self-lit from the painted texture instead, the
+    // way backscattered ice actually looks.
+    ringMat.diffuseTexture = tex;
+    ringMat.diffuseTexture.hasAlpha = true;
+    ringMat.useAlphaFromDiffuseTexture = true;
+    ringMat.emissiveTexture = tex;
+    ringMat.disableLighting = true;
+    ringMat.specularColor = Color3.Black();
+    ringMat.backFaceCulling = false;
+    ring.material = ringMat;
   }
 
   private addEnergyField(planet: Mesh, radius: number): void {
@@ -2031,6 +2229,9 @@ export class PlanetScene {
     material.backFaceCulling = false;
     material.disableDepthWrite = false; // Enable depth testing but still visible
     plane.material = material;
+
+    // UI labels must not block the volumetric sun rays.
+    if (this.godRays) this.godRays.excludedMeshes.push(plane);
   }
 
   private onPlanetClick(planet: Mesh, planetId: string): void {
@@ -3160,6 +3361,9 @@ export class PlanetScene {
       // Smooth camera transition
       this.isCameraTransitioning = true;
       this.animateCameraTransition(() => {
+        // Hyperspace jump at the moment the system swaps
+        this.playWarpEffect();
+
         // Clear and create new galaxy after camera zooms out
         this.clearGalaxy();
         this.updateSun(this.galaxies[index]);
@@ -3252,6 +3456,16 @@ export class PlanetScene {
     this.planets.clear();
     this.planetDataMap.clear();
 
+    // Dispose the per-planet surface shaders (meshes don't own materials)
+    this.planetShaderMats.forEach((mat) => mat.dispose());
+    this.planetShaderMats = [];
+
+    // Dispose the asteroid belt
+    if (this.asteroidBelt) {
+      this.asteroidBelt.dispose(false, true);
+      this.asteroidBelt = null;
+    }
+
     // Dispose all orbit paths
     this.orbitPaths.forEach((path) => {
       path.dispose();
@@ -3265,22 +3479,41 @@ export class PlanetScene {
   private updateSun(galaxy: GalaxyData): void {
     if (!this.sun) return;
 
-    const material = this.sun.material as PBRMaterial;
-    if (material) {
-      const sunColor = Color3.FromHexString(galaxy.sunColor);
-      material.emissiveColor = sunColor;
-      material.albedoColor = sunColor.scale(0.8);
+    const sunColor = Color3.FromHexString(galaxy.sunColor);
+
+    // Re-tint the plasma shader for this galaxy's star
+    if (this.sunMaterial) {
+      const core = new Color3(
+        Math.min(1, sunColor.r * 0.9 + 0.25),
+        Math.min(1, sunColor.g * 0.9 + 0.2),
+        Math.min(1, sunColor.b * 0.9 + 0.12),
+      );
+      this.sunMaterial.setColor3('coreColor', core);
+      this.sunMaterial.setColor3('edgeColor', sunColor.scale(0.4));
     }
 
-    // Update sun size
-    this.sun.scaling = new Vector3(
-      galaxy.sunSize / 8,
-      galaxy.sunSize / 8,
-      galaxy.sunSize / 8,
-    );
+    // Tint the light the star casts on its planets (kept near-white so
+    // planet albedos stay readable).
+    if (this.sunLight) {
+      this.sunLight.diffuse = Color3.Lerp(new Color3(1, 0.96, 0.88), sunColor, 0.35);
+      this.sunLight.specular = this.sunLight.diffuse.clone();
+    }
+
+    // Re-paint halo + lens streak in the star's color
+    this.drawSunHalo(sunColor);
+
+    // Update sun size (halo scales with it)
+    const s = galaxy.sunSize / 8;
+    this.sun.scaling = new Vector3(s, s, s);
+    if (this.sunHalo) {
+      this.sunHalo.scaling = new Vector3(s, s, s);
+    }
   }
 
   private createGalaxyPlanets(galaxy: GalaxyData): void {
+    // A wheeling belt of rocky debris between the orbits
+    this.createAsteroidBelt(galaxy);
+
     galaxy.planets.forEach((planetConfig, index) => {
       // Make planet ID specific to the galaxy to avoid name conflicts across galaxies
       const planetId = `${galaxy.id}_planet_${index}`;
@@ -3308,6 +3541,79 @@ export class PlanetScene {
         shape: planetConfig.shape || 'sphere',
       });
     });
+  }
+
+  /**
+   * A belt of ~1100 tumbling rocks rendered as thin instances — one draw
+   * call for an entire asteroid field. Settles into the widest gap between
+   * planetary orbits, like the real one between Mars and Jupiter.
+   */
+  private createAsteroidBelt(galaxy: GalaxyData): void {
+    const radii = galaxy.planets
+      .map((p) => p.orbitRadius)
+      .sort((a, b) => a - b);
+    let beltRadius = radii.length ? radii[radii.length - 1] + 10 : 55;
+    let bestGap = 0;
+    for (let i = 0; i < radii.length - 1; i++) {
+      const gap = radii[i + 1] - radii[i];
+      if (gap > bestGap) {
+        bestGap = gap;
+        beltRadius = (radii[i] + radii[i + 1]) / 2;
+      }
+    }
+    if (bestGap < 9 && radii.length) beltRadius = radii[radii.length - 1] + 10;
+
+    const rock = MeshBuilder.CreatePolyhedron(
+      'asteroidBelt',
+      { type: 3, size: 1 }, // icosahedron — reads as a rock chunk when squashed
+      this.scene,
+    );
+    rock.isPickable = false;
+
+    const mat = new PBRMaterial('asteroidMat', this.scene);
+    // Dark charcoal rock — reads as debris dust, not bright popcorn
+    mat.albedoColor = new Color3(0.13, 0.12, 0.11);
+    mat.metallic = 0.0;
+    mat.roughness = 1.0;
+    mat.directIntensity = 1.2;
+    mat.usePhysicalLightFalloff = false;
+    rock.material = mat;
+
+    // Deterministic scatter per galaxy
+    let s = (this.hashString(galaxy.id) % 2147483645) + 1;
+    const rand = () => {
+      s = (s * 16807) % 2147483647;
+      return s / 2147483647;
+    };
+
+    const count = 1100;
+    const buffer = new Float32Array(16 * count);
+    const m = Matrix.Identity();
+    for (let i = 0; i < count; i++) {
+      const angle = rand() * Math.PI * 2;
+      const r = beltRadius + (rand() + rand() - 1) * 3.4;
+      const y = (rand() + rand() - 1) * 0.9;
+      const scl = 0.03 + Math.pow(rand(), 2.6) * 0.16;
+      Matrix.ComposeToRef(
+        new Vector3(
+          scl * (0.6 + rand() * 0.9),
+          scl * (0.6 + rand() * 0.9),
+          scl * (0.6 + rand() * 0.9),
+        ),
+        Quaternion.FromEulerAngles(
+          rand() * Math.PI * 2,
+          rand() * Math.PI * 2,
+          rand() * Math.PI * 2,
+        ),
+        new Vector3(Math.cos(angle) * r, y, Math.sin(angle) * r),
+        m,
+      );
+      m.copyToArray(buffer, i * 16);
+    }
+    rock.thinInstanceSetBuffer('matrix', buffer, 16, true);
+    rock.thinInstanceRefreshBoundingInfo();
+
+    this.asteroidBelt = rock;
   }
 
   private updateGalaxyUI(): void {
@@ -3367,146 +3673,128 @@ export class PlanetScene {
   }
 
   private createDistantGalaxies(): void {
-    // Create visual representations of other galaxies in the distance
+    // Distant galaxies rendered as slowly spinning procedural spiral sprites —
+    // one billboard each instead of sphere + rings + particles.
     this.galaxies.forEach((galaxy, index) => {
       if (index === this.currentGalaxyIndex) return;
 
       const angle = (Math.PI * 2 * index) / this.galaxies.length;
-      const distance = 200; // Distance from center
+      const distance = 230;
 
-      // Create a miniature galaxy representation
-      const galaxyGroup = MeshBuilder.CreateSphere(
+      const sprite = MeshBuilder.CreatePlane(
         `distantGalaxy_${index}`,
-        { diameter: 8, segments: 16 },
+        { size: 26 },
         this.scene,
       );
+      sprite.position.x = Math.cos(angle) * distance;
+      sprite.position.y = Math.sin(index * 2.7) * 45; // scatter vertically
+      sprite.position.z = Math.sin(angle) * distance;
+      sprite.billboardMode = Mesh.BILLBOARDMODE_ALL;
 
-      galaxyGroup.position.x = Math.cos(angle) * distance;
-      galaxyGroup.position.y = 0;
-      galaxyGroup.position.z = Math.sin(angle) * distance;
-
-      // Apply galaxy color - use the actual galaxy's sun color
+      const spriteTexture = this.createGalaxySpriteTexture(index, galaxy.sunColor);
       const material = new StandardMaterial(
         `distantGalaxyMat_${index}`,
         this.scene,
       );
-      material.emissiveColor = Color3.FromHexString(galaxy.sunColor);
-      material.alpha = 0.6;
-      galaxyGroup.material = material;
+      material.emissiveTexture = spriteTexture;
+      material.diffuseTexture = spriteTexture;
+      material.diffuseColor = Color3.Black();
+      material.specularColor = Color3.Black();
+      material.disableLighting = true;
+      material.alphaMode = Engine.ALPHA_ADD; // black background adds nothing
+      material.alpha = 0.95;
+      sprite.material = material;
 
-      // Add glow effect
-      if (this.glowLayer) {
-        this.glowLayer.addIncludedOnlyMesh(galaxyGroup);
-      }
+      // Sprites shouldn't cast occlusion into the god-ray pass.
+      if (this.godRays) this.godRays.excludedMeshes.push(sprite);
 
-      // Add orbital paths around the distant galaxy to make it look more like a galaxy
-      this.createMiniGalaxyOrbits(galaxyGroup, index);
-
-      // Add some orbiting particles to make it look like a mini solar system
-      this.createMiniGalaxyParticles(galaxyGroup, galaxy);
-
-      // Make it clickable to switch to that galaxy
-      // Store the actual galaxy index in the mesh metadata
-      galaxyGroup.metadata = { galaxyIndex: index };
-      galaxyGroup.actionManager = new ActionManager(this.scene);
-      galaxyGroup.actionManager.registerAction(
+      // Make it clickable to switch to that galaxy. The texture reference is
+      // kept in metadata so the animation loop can spin the spiral.
+      sprite.metadata = { galaxyIndex: index, spriteTexture };
+      sprite.actionManager = new ActionManager(this.scene);
+      sprite.actionManager.registerAction(
         new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
-          // Use the stored galaxy index to ensure we switch to the correct galaxy
-          const targetIndex = galaxyGroup.metadata.galaxyIndex;
+          const targetIndex = sprite.metadata.galaxyIndex;
           this.switchGalaxy(targetIndex);
         }),
       );
 
-      this.distantGalaxies.set(index, galaxyGroup);
+      this.distantGalaxies.set(index, sprite);
     });
   }
 
-  private createMiniGalaxyOrbits(galaxyMesh: Mesh, galaxyIndex: number): void {
-    // Create 2-3 small orbital rings around the distant galaxy
-    const numOrbits = 3;
-    const baseRadius = 4.5; // Start slightly larger than the sphere (diameter 8)
+  /** Paints a spiral galaxy (bulge + two arms + star specks) tinted by color. */
+  private createGalaxySpriteTexture(index: number, colorHex: string): DynamicTexture {
+    const S = 256;
+    const c = S / 2;
+    const tex = new DynamicTexture(`distantGalaxyTex_${index}`, S, this.scene, true);
+    const ctx = tex.getContext() as CanvasRenderingContext2D;
+    const col = Color3.FromHexString(colorHex);
+    const r = Math.round(255 * col.r);
+    const g = Math.round(255 * col.g);
+    const b = Math.round(255 * col.b);
 
-    for (let i = 0; i < numOrbits; i++) {
-      const orbitRadius = baseRadius + i * 1.5;
-      const orbit = MeshBuilder.CreateTorus(
-        `distantGalaxyOrbit_${galaxyIndex}_${i}`,
-        {
-          diameter: orbitRadius * 2,
-          thickness: 0.1,
-          tessellation: 32,
-        },
-        this.scene,
-      );
+    ctx.fillStyle = 'rgb(0,0,0)';
+    ctx.fillRect(0, 0, S, S);
 
-      // Don't set position - let parenting handle it
-      // When we parent the orbit to the galaxy, it will be positioned relative to the galaxy
-      // Setting position.zero() explicitly or leaving it default (0,0,0) relative to parent
+    // Deterministic pseudo-random per galaxy so each spiral looks distinct
+    let seed = index * 1013 + 71;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
 
-      // Rotate each orbit slightly differently for variety
-      orbit.rotation.x = Math.PI / 2 + i * 0.3;
-      orbit.rotation.y = i * 0.5;
-
-      // Create material with similar color to galaxy but more transparent
-      const orbitMaterial = new StandardMaterial(
-        `distantGalaxyOrbitMat_${galaxyIndex}_${i}`,
-        this.scene,
-      );
-      const galaxyMaterial = galaxyMesh.material as StandardMaterial;
-      if (galaxyMaterial && galaxyMaterial.emissiveColor) {
-        orbitMaterial.emissiveColor = galaxyMaterial.emissiveColor.clone();
+    // Spiral arms
+    const arms = 2 + (index % 2);
+    for (let arm = 0; arm < arms; arm++) {
+      const phase = (Math.PI * 2 * arm) / arms + rand() * 0.5;
+      for (let i = 0; i < 90; i++) {
+        const t = i / 90;
+        const rad = 6 + t * (c - 22);
+        const th = phase + t * 3.9 + rand() * 0.12;
+        const x = c + Math.cos(th) * rad;
+        const y = c + Math.sin(th) * rad * 0.82;
+        const blobR = 3 + (1 - t) * 9 + rand() * 3;
+        const a = (1 - t) * 0.16 + 0.03;
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, blobR);
+        const mixW = 1 - t * 0.65; // whiter toward the core
+        const rr = Math.round(r * (1 - mixW) + 255 * mixW);
+        const gg = Math.round(g * (1 - mixW) + 250 * mixW);
+        const bb = Math.round(b * (1 - mixW) + 240 * mixW);
+        grad.addColorStop(0, `rgba(${rr},${gg},${bb},${a})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x - blobR, y - blobR, blobR * 2, blobR * 2);
       }
-      orbitMaterial.alpha = 0.3;
-      orbit.material = orbitMaterial;
-      orbit.isPickable = false;
-
-      // Parent the orbit to the galaxy mesh so they move together
-      // Child position is relative to parent, defaults to (0,0,0) which centers it on the galaxy
-      orbit.parent = galaxyMesh;
-    }
-  }
-
-  private createMiniGalaxyParticles(
-    galaxyMesh: Mesh,
-    galaxy: GalaxyData,
-  ): void {
-    // Create small particle system to represent planets orbiting
-    const particleSystem = new ParticleSystem(
-      `miniGalaxy_${galaxy.id}`,
-      50,
-      this.scene,
-    );
-
-    // Try to load texture, but don't fail if it's blocked
-    try {
-      particleSystem.particleTexture = new Texture(
-        'https://assets.babylonjs.com/textures/flare.png',
-        this.scene,
-      );
-    } catch (error) {
-      console.warn('Failed to load particle texture, using default');
     }
 
-    particleSystem.emitter = galaxyMesh;
-    const sphereEmitter = new SphereParticleEmitter(4);
-    particleSystem.particleEmitterType = sphereEmitter;
+    // Bright central bulge
+    const bulge = ctx.createRadialGradient(c, c, 0, c, c, 34);
+    bulge.addColorStop(0,   'rgba(255,250,235,0.98)');
+    bulge.addColorStop(0.3, `rgba(${Math.min(255, r + 90)},${Math.min(255, g + 80)},${Math.min(255, b + 60)},0.6)`);
+    bulge.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = bulge;
+    ctx.fillRect(0, 0, S, S);
 
-    particleSystem.color1 = Color4.FromHexString(galaxy.sunColor + 'FF');
-    particleSystem.color2 = Color4.FromHexString(galaxy.sunColor + 'AA');
-    particleSystem.colorDead = new Color4(0, 0, 0, 0);
+    // Star specks scattered along the disc
+    for (let i = 0; i < 70; i++) {
+      const th = rand() * Math.PI * 2;
+      const rad = rand() * (c - 18);
+      const x = c + Math.cos(th) * rad;
+      const y = c + Math.sin(th) * rad * 0.82;
+      ctx.fillStyle = `rgba(255,255,255,${0.25 + rand() * 0.5})`;
+      ctx.fillRect(x, y, 1.5, 1.5);
+    }
 
-    particleSystem.minSize = 0.3;
-    particleSystem.maxSize = 0.8;
-    particleSystem.minLifeTime = 2;
-    particleSystem.maxLifeTime = 4;
-    particleSystem.emitRate = 20;
-
-    particleSystem.start();
+    tex.update();
+    return tex;
   }
 
   private updateDistantGalaxies(): void {
-    // Clear existing distant galaxies
+    // Clear existing distant galaxies (including their materials/textures,
+    // so repeated galaxy switching doesn't leak GPU memory)
     this.distantGalaxies.forEach((mesh) => {
-      mesh.dispose();
+      mesh.dispose(false, true);
     });
     this.distantGalaxies.clear();
 
@@ -3524,8 +3812,8 @@ export class PlanetScene {
       `orbit_${id}`,
       {
         diameter: orbitRadius * 2,
-        thickness: 0.05,
-        tessellation: 128,
+        thickness: 0.035,
+        tessellation: 96,
       },
       this.scene,
     );
@@ -3544,11 +3832,15 @@ export class PlanetScene {
     // This is the formula used in the animation loop
 
     const orbitMaterial = new StandardMaterial(`orbitMat_${id}`, this.scene);
-    orbitMaterial.emissiveColor = new Color3(0.3, 0.3, 0.4);
-    orbitMaterial.alpha = 0.4;
-    orbitMaterial.wireframe = false;
+    orbitMaterial.emissiveColor = new Color3(0.32, 0.4, 0.58);
+    orbitMaterial.disableLighting = true;
+    orbitMaterial.alpha = 0.2; // faint guide lines, like a HUD overlay
     orbitPath.material = orbitMaterial;
     orbitPath.isPickable = false;
+
+    // Static geometry — freeze its transform so it costs nothing per frame.
+    orbitPath.computeWorldMatrix(true);
+    orbitPath.freezeWorldMatrix();
 
     // Store orbit path for later cleanup
     this.orbitPaths.set(id, orbitPath);
@@ -4055,6 +4347,95 @@ export class PlanetScene {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
 
+  /**
+   * Hyperspace jump: a burst of velocity-stretched star streaks past the
+   * camera, an FOV punch, and a white-hot exposure flash. Fired at the moment
+   * a galaxy switch swaps the system.
+   */
+  private playWarpEffect(): void {
+    // ── Star streaks radiating past the camera ──────────────────────────
+    const streakTex = new DynamicTexture('warpStreakTex', 32, this.scene, false);
+    const sCtx = streakTex.getContext() as CanvasRenderingContext2D;
+    const sg = sCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    sg.addColorStop(0, 'rgba(255,255,255,1)');
+    sg.addColorStop(0.5, 'rgba(190,215,255,0.7)');
+    sg.addColorStop(1, 'rgba(120,160,255,0)');
+    sCtx.fillStyle = sg; sCtx.fillRect(0, 0, 32, 32);
+    streakTex.update();
+
+    const streaks = new ParticleSystem('warpStreaks', 160, this.scene);
+    streaks.emitter = this.camera.position.clone();
+    streaks.particleEmitterType = new SphereParticleEmitter(3);
+    streaks.particleTexture = streakTex;
+    streaks.billboardMode = ParticleSystem.BILLBOARDMODE_STRETCHED; // hyperspace lines
+    streaks.minSize = 0.22; streaks.maxSize = 0.5;
+    streaks.minLifeTime = 0.5; streaks.maxLifeTime = 0.9;
+    streaks.emitRate = 0;
+    streaks.manualEmitCount = 160;
+    streaks.blendMode = ParticleSystem.BLENDMODE_ADD;
+    streaks.minEmitPower = 90; streaks.maxEmitPower = 170;
+    streaks.color1 = new Color4(0.85, 0.92, 1.0, 0.9);
+    streaks.color2 = new Color4(0.55, 0.75, 1.0, 0.7);
+    streaks.colorDead = new Color4(0.3, 0.5, 1.0, 0);
+    streaks.start();
+    const cleanup = window.setTimeout(() => streaks.dispose(), 2500);
+    this.meteorTimeouts.push(cleanup);
+
+    // ── FOV punch + exposure flash envelope ─────────────────────────────
+    const baseFov = 0.92;
+    const baseExposure = 1.12;
+    let t = 0;
+    const obs = this.scene.onBeforeRenderObservable.add(() => {
+      t += this.engine.getDeltaTime() / 1000;
+      const k = t / 1.1; // total flash duration in seconds
+      if (k >= 1) {
+        this.camera.fov = baseFov;
+        if (this.cinematicPipeline) {
+          this.cinematicPipeline.imageProcessing.exposure = baseExposure;
+        }
+        this.scene.onBeforeRenderObservable.remove(obs);
+        return;
+      }
+      const env = Math.sin(Math.min(1, k) * Math.PI);
+      this.camera.fov = baseFov + env * 0.22;
+      if (this.cinematicPipeline) {
+        this.cinematicPipeline.imageProcessing.exposure = baseExposure + env * 1.4;
+      }
+    });
+
+    this.playSound('warp');
+  }
+
+  /**
+   * Opening establishing shot: the camera starts far out and sweeps down
+   * into the system over six seconds, like a title sequence.
+   */
+  private playIntroShot(): void {
+    const cam = this.camera;
+    const endAlpha = Math.PI / 4;
+    const endBeta = Math.acos(40 / Math.sqrt(80 * 80 + 40 * 40 + 80 * 80));
+    const endRadius = 120;
+    const startAlpha = endAlpha - 1.7;
+    const startBeta = Math.min(endBeta + 0.25, 1.35);
+    const startRadius = 290;
+
+    this.isCameraTransitioning = true; // pause idle drift during the shot
+    let t = 0;
+    const obs = this.scene.onBeforeRenderObservable.add(() => {
+      t += this.engine.getDeltaTime() / 1000;
+      const k = Math.min(1, t / 6);
+      const e = this.easeInOutCubic(k);
+      cam.alpha = startAlpha + (endAlpha - startAlpha) * e;
+      cam.beta = startBeta + (endBeta - startBeta) * e;
+      cam.radius = startRadius + (endRadius - startRadius) * e;
+      cam.target = Vector3.Zero();
+      if (k >= 1) {
+        this.scene.onBeforeRenderObservable.remove(obs);
+        this.isCameraTransitioning = false;
+      }
+    });
+  }
+
   private getPresetName(preset: CameraPreset): string {
     switch (preset) {
       case CameraPreset.SPAWN_POINT:
@@ -4118,8 +4499,10 @@ export class PlanetScene {
   }
 
   private createSynthesizedSpaceMusic(): void {
-    // Create a melodic ambient sequence using Web Audio API
-    // Multiple modes for variety - now with happier melodies!
+    // Cinematic ambient score, fully synthesized with WebAudio:
+    //  · a deep detuned sub-drone (the "engine hum of the universe")
+    //  · filtered noise "air" that slowly breathes
+    //  · vast pad chords built from open fifths + ninths that drift by
     try {
       // Reuse existing audio context or create new one
       if (!this.audioContext) {
@@ -4127,76 +4510,113 @@ export class PlanetScene {
           window.AudioContext || (window as any).webkitAudioContext
         )();
       }
+      const ctx = this.audioContext;
 
-      // Create gain node for overall volume control
-      this.musicGainNode = this.audioContext.createGain();
-      this.musicGainNode.gain.value = 0.08; // Slightly louder for happier vibe
-      this.musicGainNode.connect(this.audioContext.destination);
+      // Master volume — fades in over five seconds like a film open
+      this.musicGainNode = ctx.createGain();
+      this.musicGainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
+      this.musicGainNode.gain.linearRampToValueAtTime(0.09, ctx.currentTime + 5);
+      this.musicGainNode.connect(ctx.destination);
 
-      // Define multiple melody modes - all uplifting and happy!
+      // ── Sub drone: detuned sines an octave apart, slowly swelling ──────
+      const droneGain = ctx.createGain();
+      droneGain.gain.value = 0.14;
+      droneGain.connect(this.musicGainNode);
+      [
+        { f: 55.0, g: 0.5 },
+        { f: 55.35, g: 0.45 },
+        { f: 110.4, g: 0.22 },
+      ].forEach((v) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = v.f;
+        const g = ctx.createGain();
+        g.gain.value = v.g;
+        osc.connect(g);
+        g.connect(droneGain);
+        osc.start();
+        this.musicOscillators.push(osc);
+      });
+      // Slow amplitude swell on the drone
+      const droneLfo = ctx.createOscillator();
+      droneLfo.type = 'sine';
+      droneLfo.frequency.value = 0.05;
+      const droneLfoGain = ctx.createGain();
+      droneLfoGain.gain.value = 0.05;
+      droneLfo.connect(droneLfoGain);
+      droneLfoGain.connect(droneGain.gain);
+      droneLfo.start();
+      this.musicOscillators.push(droneLfo);
+
+      // ── Space "air": looped brown noise through a breathing lowpass ────
+      const noiseLen = 2 * ctx.sampleRate;
+      const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+      const nd = noiseBuf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < noiseLen; i++) {
+        const white = Math.random() * 2 - 1;
+        last = (last + 0.02 * white) / 1.02;
+        nd[i] = last * 3.5;
+      }
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = noiseBuf;
+      noiseSrc.loop = true;
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = 'lowpass';
+      noiseFilter.frequency.value = 320;
+      noiseFilter.Q.value = 0.4;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.05;
+      noiseSrc.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(this.musicGainNode);
+      noiseSrc.start();
+      // The filter slowly opens and closes — solar wind
+      const airLfo = ctx.createOscillator();
+      airLfo.type = 'sine';
+      airLfo.frequency.value = 0.02;
+      const airLfoGain = ctx.createGain();
+      airLfoGain.gain.value = 160;
+      airLfo.connect(airLfoGain);
+      airLfoGain.connect(noiseFilter.frequency);
+      airLfo.start();
+      this.musicOscillators.push(airLfo);
+
+      // ── Pad progressions: each "melody mode" is a sequence of chord
+      //    roots; the pad voicing (root · 5th · octave · 9th) is stacked in
+      //    schedulePad(). Open voicings = vast, weightless, never saccharine.
       this.melodyModes = [
-        // Mode 0: C Major Pentatonic (Happy and Bright)
+        // Mode 0: A minor space — wonder with gravity
         [
-          { freq: 261.63, duration: 1.2 }, // C4
-          { freq: 293.66, duration: 1.0 }, // D4
-          { freq: 329.63, duration: 1.2 }, // E4
-          { freq: 392.0, duration: 1.5 }, // G4
-          { freq: 440.0, duration: 1.0 }, // A4
-          { freq: 523.25, duration: 1.8 }, // C5
-          { freq: 440.0, duration: 1.2 }, // A4
-          { freq: 392.0, duration: 2.0 }, // G4
+          { freq: 110.0, duration: 13 }, // A2
+          { freq: 87.31, duration: 13 }, // F2
+          { freq: 130.81, duration: 13 }, // C3
+          { freq: 98.0, duration: 13 }, // G2
         ],
-        // Mode 1: G Major Pentatonic (Joyful)
+        // Mode 1: D dorian drift
         [
-          { freq: 392.0, duration: 1.0 }, // G4
-          { freq: 440.0, duration: 1.0 }, // A4
-          { freq: 493.88, duration: 1.2 }, // B4
-          { freq: 587.33, duration: 1.5 }, // D5
-          { freq: 659.25, duration: 1.2 }, // E5
-          { freq: 783.99, duration: 1.8 }, // G5
-          { freq: 659.25, duration: 1.2 }, // E5
-          { freq: 587.33, duration: 2.0 }, // D5
+          { freq: 73.42, duration: 14 }, // D2
+          { freq: 116.54, duration: 14 }, // Bb2
+          { freq: 87.31, duration: 14 }, // F2
+          { freq: 110.0, duration: 14 }, // A2
         ],
-        // Mode 2: D Major (Uplifting and Energetic)
+        // Mode 2: E minor deep field
         [
-          { freq: 293.66, duration: 1.0 }, // D4
-          { freq: 329.63, duration: 1.0 }, // E4
-          { freq: 369.99, duration: 1.2 }, // F#4
-          { freq: 440.0, duration: 1.5 }, // A4
-          { freq: 493.88, duration: 1.2 }, // B4
-          { freq: 587.33, duration: 1.8 }, // D5
-          { freq: 493.88, duration: 1.2 }, // B4
-          { freq: 440.0, duration: 2.0 }, // A4
+          { freq: 82.41, duration: 13 }, // E2
+          { freq: 130.81, duration: 13 }, // C3
+          { freq: 98.0, duration: 13 }, // G2
+          { freq: 123.47, duration: 13 }, // B2
         ],
-        // Mode 3: F Major Pentatonic (Cheerful and Playful)
+        // Mode 3: C lydian dawn — the bright one
         [
-          { freq: 349.23, duration: 1.0 }, // F4
-          { freq: 392.0, duration: 1.0 }, // G4
-          { freq: 440.0, duration: 1.2 }, // A4
-          { freq: 523.25, duration: 1.5 }, // C5
-          { freq: 587.33, duration: 1.2 }, // D5
-          { freq: 698.46, duration: 1.8 }, // F5
-          { freq: 587.33, duration: 1.2 }, // D5
-          { freq: 523.25, duration: 2.0 }, // C5
-        ],
-        // Mode 4: A Major Pentatonic (Bright and Optimistic)
-        [
-          { freq: 440.0, duration: 1.0 }, // A4
-          { freq: 493.88, duration: 1.0 }, // B4
-          { freq: 554.37, duration: 1.2 }, // C#5
-          { freq: 659.25, duration: 1.5 }, // E5
-          { freq: 739.99, duration: 1.2 }, // F#5
-          { freq: 880.0, duration: 1.8 }, // A5
-          { freq: 739.99, duration: 1.2 }, // F#5
-          { freq: 659.25, duration: 2.0 }, // E5
+          { freq: 65.41, duration: 14 }, // C2
+          { freq: 98.0, duration: 14 }, // G2
+          { freq: 110.0, duration: 14 }, // A2
+          { freq: 87.31, duration: 14 }, // F2
         ],
       ];
 
       this.playCurrentMelody();
-
-      console.log(
-        `Happy melodic space ambience started - Mode ${this.currentMelodyMode}`,
-      );
     } catch (err) {
       console.warn('Could not create synthesized music:', err);
     }
@@ -4205,43 +4625,63 @@ export class PlanetScene {
   private playCurrentMelody(): void {
     if (!this.audioContext || !this.musicGainNode) return;
 
-    const melody = this.melodyModes[this.currentMelodyMode];
+    const progression = this.melodyModes[this.currentMelodyMode];
+    let tCur = this.audioContext.currentTime + 0.2;
 
-    // Play the melody in a loop
-    let currentTime = this.audioContext.currentTime;
-
-    melody.forEach((note, index) => {
-      const osc = this.audioContext!.createOscillator();
-      const noteGain = this.audioContext!.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.value = note.freq;
-
-      // Envelope for each note (fade in/out)
-      noteGain.gain.setValueAtTime(0, currentTime);
-      noteGain.gain.linearRampToValueAtTime(0.3, currentTime + 0.1);
-      noteGain.gain.exponentialRampToValueAtTime(
-        0.01,
-        currentTime + note.duration - 0.1,
-      );
-
-      osc.connect(noteGain);
-      noteGain.connect(this.musicGainNode!);
-
-      osc.start(currentTime);
-      osc.stop(currentTime + note.duration);
-
-      this.musicOscillators.push(osc);
-      currentTime += note.duration;
+    progression.forEach((chord) => {
+      // Pads overlap by a few seconds so the harmony crossfades seamlessly
+      this.schedulePad(chord.freq, tCur, chord.duration + 5);
+      tCur += chord.duration;
     });
 
     // Schedule next loop
-    const totalDuration = melody.reduce((sum, note) => sum + note.duration, 0);
+    const totalDuration = progression.reduce((sum, c) => sum + c.duration, 0);
     this.melodyTimeout = window.setTimeout(() => {
       if (this.isMusicEnabled && this.audioContext) {
         this.playCurrentMelody();
       }
     }, totalDuration * 1000);
+  }
+
+  /** One vast pad chord: root · fifth · octave · ninth, detuned & filtered. */
+  private schedulePad(root: number, start: number, length: number): void {
+    if (!this.audioContext || !this.musicGainNode) return;
+    const ctx = this.audioContext;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 0.6;
+    // The filter blooms open mid-chord and settles — the pad "breathes"
+    filter.frequency.setValueAtTime(500, start);
+    filter.frequency.linearRampToValueAtTime(1100, start + length * 0.5);
+    filter.frequency.linearRampToValueAtTime(600, start + length);
+    filter.connect(this.musicGainNode);
+
+    const intervals = [1, 1.4983, 2, 2.2449, 2.9966]; // root 5th oct 9th 12th
+    intervals.forEach((ratio, i) => {
+      const level = 0.16 / (1 + i * 0.55);
+      [-5, 5].forEach((cents) => {
+        const osc = ctx.createOscillator();
+        osc.type = i < 2 ? 'triangle' : 'sine';
+        osc.frequency.value = root * ratio;
+        osc.detune.value = cents;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, start);
+        g.gain.linearRampToValueAtTime(level, start + length * 0.35);
+        g.gain.setValueAtTime(level, start + length * 0.6);
+        g.gain.linearRampToValueAtTime(0.0001, start + length);
+        osc.connect(g);
+        g.connect(filter);
+        osc.start(start);
+        osc.stop(start + length + 0.2);
+        this.musicOscillators.push(osc);
+      });
+    });
+
+    // Don't let the bookkeeping array grow without bound on long sessions
+    if (this.musicOscillators.length > 300) {
+      this.musicOscillators.splice(0, 150);
+    }
   }
 
   private switchMelodyMode(): void {
@@ -4358,14 +4798,49 @@ export class PlanetScene {
           break;
 
         case 'camera-change':
-          // Camera change - quick beep
-          oscillator.type = 'square';
-          oscillator.frequency.setValueAtTime(440, now);
-          gainNode.gain.setValueAtTime(0.15, now);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+          // Camera change - soft cinematic ping
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(660, now);
+          oscillator.frequency.exponentialRampToValueAtTime(495, now + 0.18);
+          gainNode.gain.setValueAtTime(0.12, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
           oscillator.start(now);
-          oscillator.stop(now + 0.1);
+          oscillator.stop(now + 0.2);
           break;
+
+        case 'warp': {
+          // Hyperspace jump — noise sweep rising through a bandpass + sub boom
+          const dur = 1.1;
+          const len = Math.ceil(dur * this.audioContext.sampleRate);
+          const buf = this.audioContext.createBuffer(1, len, this.audioContext.sampleRate);
+          const ch = buf.getChannelData(0);
+          for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+          const src = this.audioContext.createBufferSource();
+          src.buffer = buf;
+          const bp = this.audioContext.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.Q.value = 1.2;
+          bp.frequency.setValueAtTime(180, now);
+          bp.frequency.exponentialRampToValueAtTime(3200, now + dur * 0.6);
+          bp.frequency.exponentialRampToValueAtTime(400, now + dur);
+          const ng = this.audioContext.createGain();
+          ng.gain.setValueAtTime(0.0001, now);
+          ng.gain.linearRampToValueAtTime(0.35, now + dur * 0.35);
+          ng.gain.exponentialRampToValueAtTime(0.001, now + dur);
+          src.connect(bp);
+          bp.connect(ng);
+          ng.connect(this.audioContext.destination);
+          src.start(now);
+          // Sub-bass boom underneath
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(70, now);
+          oscillator.frequency.exponentialRampToValueAtTime(26, now + 0.9);
+          gainNode.gain.setValueAtTime(0.4, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.9);
+          oscillator.start(now);
+          oscillator.stop(now + 0.95);
+          break;
+        }
 
         case 'modal-open':
           // Modal open - rising arpeggio
@@ -4439,7 +4914,7 @@ export class PlanetScene {
 
   private addOrbitalTrail(planet: Mesh, color: string, planetId: string): void {
     // Create a vivid particle trail that follows the planet
-    const trail = new ParticleSystem(`trail_${planetId}`, 350, this.scene);
+    const trail = new ParticleSystem(`trail_${planetId}`, 140, this.scene);
     trail.emitter = planet;
 
     // Point emitter at planet position
@@ -4457,16 +4932,16 @@ export class PlanetScene {
     trail.color2 = new Color4(hexColor.r, hexColor.g, hexColor.b, 0.5);
     trail.colorDead = new Color4(hexColor.r * 0.5, hexColor.g * 0.5, hexColor.b * 0.5, 0);
 
-    // Slightly larger particles for visibility
-    trail.minSize = 0.1;
-    trail.maxSize = 0.28;
+    // Slightly larger particles compensate for the reduced count
+    trail.minSize = 0.12;
+    trail.maxSize = 0.32;
 
     // Longer fade for comet-tail effect
     trail.minLifeTime = 0.8;
     trail.maxLifeTime = 2.5;
 
-    // Higher emit rate
-    trail.emitRate = 55;
+    // Modest emit rate — comet tail look at reduced update cost
+    trail.emitRate = 45;
 
     // Minimal velocity so particles stay close to orbit path
     trail.minEmitPower = 0.04;
@@ -4478,61 +4953,17 @@ export class PlanetScene {
     trail.start();
   }
 
-  private createNebula(): void {
-    // Cloud texture — soft billow
-    const cloudTex = new DynamicTexture('nebulaCloudTex', 192, this.scene, false);
-    const nc = cloudTex.getContext() as CanvasRenderingContext2D;
-    const ng = nc.createRadialGradient(96, 96, 0, 96, 96, 96);
-    ng.addColorStop(0,    'rgba(255,255,255,1)');
-    ng.addColorStop(0.25, 'rgba(255,255,255,0.75)');
-    ng.addColorStop(0.55, 'rgba(255,255,255,0.35)');
-    ng.addColorStop(0.85, 'rgba(255,255,255,0.1)');
-    ng.addColorStop(1,    'rgba(0,0,0,0)');
-    nc.fillStyle = ng; nc.fillRect(0, 0, 192, 192);
-    cloudTex.update();
-
-    // Five nebula regions — blue, red, green, violet, orange — cinematic depth
-    const regions = [
-      { name: 'nebulaBlue',   pos: new Vector3(-130, 35, -90),  r: 100,
-        c1: new Color4(0.18, 0.38, 1.0, 0.05), c2: new Color4(0.38, 0.20, 0.9, 0.04), count: 120 },
-      { name: 'nebulaRed',    pos: new Vector3(120, -40, 145),  r: 90,
-        c1: new Color4(1.0, 0.14, 0.22, 0.045), c2: new Color4(0.88, 0.06, 0.32, 0.035), count: 110 },
-      { name: 'nebulaGreen',  pos: new Vector3(80, 60, -160),   r: 75,
-        c1: new Color4(0.12, 0.9, 0.45, 0.04), c2: new Color4(0.08, 0.6, 0.3, 0.03),  count: 100 },
-      { name: 'nebulaViolet', pos: new Vector3(-90, -55, 120),  r: 85,
-        c1: new Color4(0.7, 0.1, 1.0, 0.045), c2: new Color4(0.5, 0.05, 0.8, 0.035),  count: 110 },
-      { name: 'nebulaOrange', pos: new Vector3(150, 20, -50),   r: 65,
-        c1: new Color4(1.0, 0.5, 0.05, 0.04), c2: new Color4(0.9, 0.28, 0.02, 0.03), count: 90 },
-    ];
-
-    for (const def of regions) {
-      const neb = new ParticleSystem(def.name, def.count, this.scene);
-      neb.emitter = def.pos;
-      neb.minEmitBox = new Vector3(-def.r, -def.r * 0.55, -def.r);
-      neb.maxEmitBox = new Vector3(def.r, def.r * 0.55, def.r);
-      neb.particleTexture = cloudTex;
-      neb.minSize = 28; neb.maxSize = 80;
-      neb.minLifeTime = 80; neb.maxLifeTime = 160;
-      neb.emitRate = 5;
-      neb.blendMode = ParticleSystem.BLENDMODE_STANDARD;
-      neb.minEmitPower = 0.03; neb.maxEmitPower = 0.12;
-      neb.minAngularSpeed = -0.008; neb.maxAngularSpeed = 0.008;
-      neb.color1    = def.c1;
-      neb.color2    = def.c2;
-      neb.colorDead = new Color4(0, 0, 0, 0);
-      neb.start();
-    }
-  }
-
   private toggleMusic(): void {
     this.isMusicEnabled = !this.isMusicEnabled;
-    if (this.musicGainNode) {
-      // Fade music in/out instead of abruptly stopping
-      if (this.isMusicEnabled) {
-        this.musicGainNode.gain.value = 0.05;
-      } else {
-        this.musicGainNode.gain.value = 0;
-      }
+    if (this.musicGainNode && this.audioContext) {
+      // Smooth two-second fade instead of an abrupt cut
+      const now = this.audioContext.currentTime;
+      this.musicGainNode.gain.cancelScheduledValues(now);
+      this.musicGainNode.gain.setValueAtTime(this.musicGainNode.gain.value, now);
+      this.musicGainNode.gain.linearRampToValueAtTime(
+        this.isMusicEnabled ? 0.09 : 0.0001,
+        now + 2,
+      );
     }
   }
 
@@ -6087,10 +6518,10 @@ export class PlanetScene {
       this.meteorInterval = null;
     }
 
-    // Clear sun surface animation interval
-    if (this.sunUpdateInterval !== null) {
-      clearInterval(this.sunUpdateInterval);
-      this.sunUpdateInterval = null;
+    // Clear adaptive-quality monitor
+    if (this.adaptiveQualityInterval !== null) {
+      clearInterval(this.adaptiveQualityInterval);
+      this.adaptiveQualityInterval = null;
     }
 
     // Clear leaderboard update interval
@@ -6109,7 +6540,7 @@ export class PlanetScene {
 
     // Dispose distant galaxies
     this.distantGalaxies.forEach((mesh) => {
-      mesh.dispose();
+      mesh.dispose(false, true);
     });
     this.distantGalaxies.clear();
 
