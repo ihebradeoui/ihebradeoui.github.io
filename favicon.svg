@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="p" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#a8ddff"/>
+      <stop offset="55%" stop-color="#2f79ff"/>
+      <stop offset="100%" stop-color="#12234a"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.0"/>
+      <stop offset="65%" stop-color="#b8d6ff" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#b8d6ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="none"/>
+
+  <!-- subtle outer glow -->
+  <circle cx="128" cy="136" r="92" fill="url(#glow)"/>
+
+  <!-- ring (behind) -->
+  <ellipse cx="128" cy="128" rx="112" ry="42" fill="none" stroke="#e8f0ff" stroke-opacity="0.70" stroke-width="10"/>
+
+  <!-- planet -->
+  <circle cx="128" cy="136" r="76" fill="url(#p)"/>
+
+  <!-- ring (front highlight) -->
+  <path d="M 22 128 C 66 172, 190 172, 234 128" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6"/>
+
+  <!-- specular highlight -->
+  <circle cx="104" cy="112" r="26" fill="#ffffff" fill-opacity="0.14"/>
+</svg>
