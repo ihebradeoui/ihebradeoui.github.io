@@ -82,12 +82,18 @@ export class Movement {
         // top.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(0, viewAngleY, 0);
         //ball.rotationQuaternion = Quaternion.FromEulerAngles(0, thing.up*90, 0);
 
-        //!!!!!!!!!! upload to cloud
-        time += 1
+        //!!!!!!!!!! upload to cloud with optimization
+        time += 1;
         if (!MovingImpulse.equals(new Vector3(0, 0, 0))) ball.physicsImpostor.applyImpulse(MovingImpulse, ball.getAbsolutePosition());
-        if (oldPos !== ball.position) {
-
-            //movementService.updateCoordinatesInLobby(lobby, Coordinates.makeCoordinatesFromVector3(user, ball.position))
+        if (oldPos.x !== ball.position.x || oldPos.y !== ball.position.y || oldPos.z !== ball.position.z) {
+            // Use the optimized update method that includes throttling
+            movementService.updateCoordinatesByUser(Coordinates.makeCoordinatesFromVector3(user, ball.position), lobby);
+            
+            // Log performance stats every 100 updates (optional - can be removed for production)
+            if (time % 100 === 0) {
+                const stats = movementService.getPerformanceStats();
+                console.log('Firebase Optimization Stats:', stats);
+            }
         }
     }
     static calculateAngle(camera: Camera, ball: Mesh) {
